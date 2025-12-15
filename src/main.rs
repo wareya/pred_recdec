@@ -29,18 +29,47 @@ identifier ::= rx%[a-zA-Z_][a-zA-Z_0-9]*%rx
 number ::= rx%[0-9]+(\.[0-9]+)?%rx
 "####;
 */
+/*
     let s = r####"
-program ::= S
-S ::= A A "c"
+program ::= A A "a"
 A ::= #intentionally empty
+"####;
+*/
+    let s = r####"
+program ::= A
+A ::= "a" A | "a"
 "####;
     let g = bnf_to_grammar(&s).unwrap();
     println!("{:#?}", &g);
     
-    let tokens = tokenize(&g, "c");
-    println!("{:#?}", tokens);
+    let tokens = tokenize(&g, "
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+");
+    //println!("{:#?}", tokens);
     
     let tokens = tokens.unwrap();
     
+    let start = std::time::Instant::now();
     println!("{:#?}", earley_recognize(&g, "program", &tokens[..]));
+    println!("Time taken: {:?}", start.elapsed());
 }

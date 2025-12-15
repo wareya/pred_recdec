@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use regex::Regex;
@@ -8,6 +6,7 @@ use regex::Regex;
 // (And if it is, return it.)
 // I promise that in the context of parsing, this is not unusual. And it is the "correct" way
 //  of codepoint-munching utf-8 strings without turning them into char arrays or byte arrays.
+#[allow(unused)]
 pub fn check_char_at_byte(s : &str, i : usize) -> Option<char>
 {
     s.get(i..).and_then(|s| s.chars().next())
@@ -29,6 +28,7 @@ pub struct Grammar {
 
 #[derive(Debug, Clone)]
 pub struct GrammarPoint {
+    #[allow(unused)]
     pub name: String,
     pub id: usize,
     pub forms: Vec<Alternation>,

@@ -55,6 +55,11 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Vec
     // (start col, rule) -> set(parent row)
     let mut origin_sets : HashMap<(usize, usize), HashSet<usize>> = <_>::default();
     
+    // Right recursion hack: This part lets up avoid creating quadratically many state items on right recursion.
+    let mut tailret : HashMap<(usize, usize), (usize, usize)> = <_>::default();
+    // Right recursion hack: This part will be necessary to reconstructing the AST.
+    let mut taildown : HashMap<(usize, usize), HashSet<(usize, usize)>> = <_>::default();
+    
     let mut col = 0;
     let mut row = 0;
     while col < chart.len()
@@ -67,6 +72,25 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Vec
             // Completion
             if let Some(set) = origin_sets.get(&(item.start, item.rule as usize))
             {
+                // Right recursion hack:
+                // The right recursion hack itself. ctrl+f: "Setup for the right-recursion hack"
+                if set.len() == 1 && let Some(tailret_target) = tailret.get(&(item.start, *set.iter().next().unwrap()))
+                {
+                    let mut new_target = chart[tailret_target.0][tailret_target.1].clone();
+                    new_target.pos += 1;
+                    let new_row = chart[col].insert(new_target);
+                    
+                    // Without these, we would be unable to reconstruct which items returned to which.
+                    if !taildown.contains_key(&(col, new_row))
+                    {
+                        taildown.insert((col, new_row), <_>::default());
+                    }
+                    taildown.get_mut(&(col, new_row)).unwrap().insert((col, row));
+                    
+                    row += 1;
+                    continue;
+                }
+                // Normal completion.
                 for parent_row in set
                 {
                     let mut new_parent = chart[item.start][*parent_row].clone();
@@ -86,26 +110,55 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Vec
                 {
                     origin_sets.insert((col, *id), <_>::default());
                 }
+                origin_sets.get_mut(&(col, *id)).unwrap().insert(row);
+                let is_nullable = nullables.contains(id);
+                
+                // Prediction itself.
                 for i in 0..rule.forms.len()
                 {
                     let new_item = StateItem { rule : *id as u32, alt : i as u16, pos : 0, start : col };
                     chart[col].insert(new_item);
-                    origin_sets.get_mut(&(col, *id)).unwrap().insert(row);
                 }
-                // For nullables, hallucinate their completion.
-                // This addresses an operation ordering edge case and allows us to find oddly-placed nullables.
-                if nullables.contains(id)
+                
+                // For nullables, preemptively perform their completion.
+                // This addresses an operation ordering edge case that breaks grammars like:
+                //     program ::= A A "a"
+                //     A ::= #intentionally empty
+                if is_nullable
                 {
                     let mut next_item = item.clone();
                     next_item.pos += 1;
                     chart[col].insert(next_item);
                 }
+                
+                // Right recursion hack:
+                // Setup for the right-recursion hack: if the items produced by this prediction would cause US to complete ...
+                // ... set up a summarized upwards-return-sequence for them.
+                if !is_nullable && item.pos as usize + 1 == terms.len()
+                {
+                    if let Some(set) = origin_sets.get(&(item.start, item.rule as usize))
+                    {
+                        if set.len() == 1
+                        {
+                            let parent_row = set.iter().next().unwrap();
+                            let parent = chart[item.start][*parent_row].clone();
+                            // Is this optimization definitely safe?
+                            if parent.pos as usize + 1 == g.points[parent.rule as usize].forms[parent.alt as usize].matching_terms.len()
+                                && !nullables.contains(&(parent.rule as usize))
+                            {
+                                let mut tailret_target = (item.start, *parent_row);
+                                tailret_target = *tailret.get(&tailret_target).unwrap_or(&tailret_target);
+                                assert!(!tailret.contains_key(&(col, row)));
+                                tailret.insert((col, row), tailret_target);
+                            }
+                        }
+                    }
+                }
             }
             // Scan
             else
             {
-                let matched = match mt
-                {
+                let matched = match mt {
                     MatchingTerm::TermLit(text) => *tokens[col].text == *text,
                     MatchingTerm::TermRegex(regex) => regex.is_match(&*tokens[col].text),
                     _ => false,
@@ -128,7 +181,6 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Vec
     chart
 }
 
-#[allow(unused)]
 pub fn earley_recognize(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Result<u16, (usize, bool)>
 {
     let chart = chart_fill(g, root_rule_name, tokens);
