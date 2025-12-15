@@ -32,13 +32,14 @@ impl<T> std::ops::Index<usize> for VecSet<T>
 // Sizes chosen to keep the size of StateItem at 16 bytes, 1/4th of a cache line.
 pub struct StateItem {
     pub start : usize, // What column is the corresponding zero-pos item in?
-    pub rule : u32, // What Rule are we looking at?
+    pub rule : u32, // What grammar rule are we looking at?
     pub alt : u16, // Which alternation of it?
     pub pos : u16, // Earley "dot position"
 }
 
 pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Vec<VecSet<StateItem>>
 {
+    // The actual chart.
     let mut chart = vec!(VecSet::default());
     
     let root_id = g.by_name[root_rule_name];
@@ -46,6 +47,9 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Vec
     {
         chart[0].insert(StateItem { rule : root_id as u32, alt : i as u16, pos : 0, start : 0 });
     }
+    
+    // For preemptive nullable completion, we need to know what the nullables are.
+    let nullables = find_nullables(g).iter().map(|x| x.0).collect::<HashSet<_>>();
     
     // Origin set, used to bypass the "linear scan" step of finding parents to advance when children complete.
     // (start col, rule) -> set(parent row)
@@ -88,6 +92,14 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Vec
                     chart[col].insert(new_item);
                     origin_sets.get_mut(&(col, *id)).unwrap().insert(row);
                 }
+                // For nullables, hallucinate their completion.
+                // This addresses an operation ordering edge case and allows us to find oddly-placed nullables.
+                if nullables.contains(id)
+                {
+                    let mut next_item = item.clone();
+                    next_item.pos += 1;
+                    chart[col].insert(next_item);
+                }
             }
             // Scan
             else
@@ -117,7 +129,7 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Vec
 }
 
 #[allow(unused)]
-pub fn earley_recognize(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Result<(), usize>
+pub fn earley_recognize(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Result<u16, (usize, bool)>
 {
     let chart = chart_fill(g, root_rule_name, tokens);
     
@@ -128,8 +140,9 @@ pub fn earley_recognize(g : &Grammar, root_rule_name : &str, tokens : &[Token]) 
         let expected = StateItem { rule : root_id as u32, alt : i as u16, pos : pos as u16, start : 0 };
         if chart.last().unwrap().s.contains_key(&expected)
         {
-            return Ok(());
+            if chart.len() != tokens.len() + 1 { return Err((chart.len(), true)); }
+            return Ok(i as u16);
         }
     }
-    Err(chart.len())
+    Err((chart.len(), false))
 }

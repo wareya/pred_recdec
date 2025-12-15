@@ -6,6 +6,7 @@ use earley::*;
 
 // Removed the main function as it was extraneous.
 fn main() {
+    /*
     let s = r####"
 program ::= statement_list
 statement_list ::= statement_list statement | statement
@@ -27,10 +28,16 @@ core_expr ::= identifier | number
 identifier ::= rx%[a-zA-Z_][a-zA-Z_0-9]*%rx
 number ::= rx%[0-9]+(\.[0-9]+)?%rx
 "####;
+*/
+    let s = r####"
+program ::= S
+S ::= A A "c"
+A ::= #intentionally empty
+"####;
     let g = bnf_to_grammar(&s).unwrap();
     println!("{:#?}", &g);
     
-    let tokens = tokenize(&g, "x = 5 x x x x");
+    let tokens = tokenize(&g, "c");
     println!("{:#?}", tokens);
     
     let tokens = tokens.unwrap();

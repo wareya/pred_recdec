@@ -1,13 +1,13 @@
 #![allow(unused)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use regex::Regex;
 
 // Rust doesn't have these functions: check if a given byte index in a string is utf-8 or not.
 // (And if it is, return it.)
-// I promise that in the context of parsing, this is not unusual. It is in fact the "correct" way
-//  of handling utf-8 strings without turning them into char arrays or byte arrays.
+// I promise that in the context of parsing, this is not unusual. And it is the "correct" way
+//  of codepoint-munching utf-8 strings without turning them into char arrays or byte arrays.
 pub fn check_char_at_byte(s : &str, i : usize) -> Option<char>
 {
     s.get(i..).and_then(|s| s.chars().next())
@@ -309,4 +309,82 @@ pub fn tokenize(g : &Grammar, mut s : &str) -> Result<Vec<Token>, String>
         s = &s[longest..];
     }
     Ok(tokens)
+}
+
+pub fn find_nullables(g : &Grammar) -> HashSet<(usize, usize)>
+{
+    // Following from: https://cs.stackexchange.com/questions/164696/
+    
+    // Building the bipartite graph:
+    let mut rhs_to_lhs = HashMap::<_, HashSet<_>>::new();
+    let mut lhs_to_rhs = HashMap::<_, HashSet<_>>::new();
+    for rule in &g.points
+    {
+        for (alt_i, alt) in rule.forms.iter().enumerate()
+        {
+            let lhs = (rule.id, alt_i);
+            for item in &alt.matching_terms
+            {
+                if let MatchingTerm::Rule(child) = item
+                {
+                    for j in 0..g.points[*child].forms.len()
+                    {
+                        let rhs = (*child, j);
+                        
+                        if !rhs_to_lhs.contains_key(&rhs)
+                        {
+                            rhs_to_lhs.insert(rhs, HashSet::default());
+                        }
+                        rhs_to_lhs.get_mut(&rhs).unwrap().insert(lhs);
+                        
+                        if !lhs_to_rhs.contains_key(&lhs)
+                        {
+                            lhs_to_rhs.insert(lhs, HashSet::default());
+                        }
+                        lhs_to_rhs.get_mut(&lhs).unwrap().insert(rhs);
+                    }
+                }
+            }
+        }
+    }
+    
+    let mut nullable = HashSet::new();
+    let mut worklist = Vec::new();
+    // Initial population
+    for rule in &g.points
+    {
+        for (alt_i, alt) in rule.forms.iter().enumerate()
+        {
+            if alt.matching_terms.len() == 0
+            {
+                nullable.insert((rule.id, alt_i));
+                worklist.push((rule.id, alt_i));
+            }
+        }
+    }
+    
+    // Parent scanning
+    while let Some(child) = worklist.pop()
+    {
+        let parents = rhs_to_lhs.get(&child).cloned();
+        if let Some(parents) = parents
+        {
+            for parent in parents
+            {
+                if rhs_to_lhs.get(&child).unwrap().contains(&parent)
+                {
+                    rhs_to_lhs.get_mut(&child).unwrap().remove(&parent);
+                    lhs_to_rhs.get_mut(&parent).unwrap().remove(&child);
+                    // if parent's right set is now empty, this parent is now known to be nullable
+                    if lhs_to_rhs.get_mut(&parent).unwrap().is_empty()
+                    {
+                        nullable.insert(parent);
+                        worklist.push(parent);
+                    }
+                }
+            }
+        }
+    }
+    
+    nullable
 }
