@@ -47,7 +47,7 @@ Depending on the exact input and grammar, Earley varies from 2x to 10x slower th
 - (3) Elizabeth Scott: SPPF-Style Parsing From Earley Recognisers (2008)
 - Kegler: Marpa, A practical general parser: the recognizer (2019)
 - Loup: [Earley Parsing Explained](https://loup-vaillant.fr/tutorials/earley-parsing/) (Multiple years)
-- D.W.: [Computer Science Stack Exchange answer on the time complexity of nullable symbol detection](https://cs.stackexchange.com/questions/164696) (2023)
+- D.W.: [Computer Science Stack Exchange answer on the time complexity of nullable symbol detection](https://cs.stackexchange.com/questions/164696) (2023) (it's linear btw)
 - Me: [It is actually surprising that Earley can efficiently parse C, ambiguities and all](https://wareya.wordpress.com/2025/09/25/it-is-actually-surprising-that-earley-can-efficiently-parse-c-ambiguities-and-all/) (2025)
 - Me: [Earley Parsing Is Cheap in Principle and Practice: Motivation and Implementation](https://wareya.wordpress.com/2025/09/26/earley-parsing-is-cheap-in-principle-and-practice-motivation-and-implementation/) (2025)
 - Me: [Short bit: Converting EBNF to BNF](https://wareya.wordpress.com/2025/12/16/short-bit-converting-ebnf-to-bnf/) (2025)
