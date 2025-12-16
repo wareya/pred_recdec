@@ -1,6 +1,6 @@
 Earley parser in pure Rust, written in a way that's meant to be "tutorializable".
 
-This is a 99% solution: you should copy it into your own codebase and adapt it, not use it as a library. **It fully works as-is**, but the exact way your 
+This is a 99% solution: you should copy it into your own codebase and adapt it, not use it as a library. **It fully works as-is**, but the exact way your program/library implements Earley will depend on what else you have going on, so you should copy it and adapt.
 
 You may use this code under any of the following licenses, at your choice: CC0, Unlicense, BSD-0, WTFPL. Optionally, I would appreciate a shoutout or "thanks" wherever the best place to put one is, if there is an appropriate place for one. Consider also thanking other existing Earley work if it's relevant to how you use this.
 
