@@ -42,7 +42,7 @@ The given numeric citations are not necessarily the earliest written examples of
 ### Recommended changes
 
 - Your tokenizer should probably be aware of comments. Mine isn't.
-- The API I implemented gives error locations, but not the error state set. You'll have to add extra structure around that part to implementing full error reporting, which differs a lot depending on how you're using it.
+- The API I implemented gives error locations, but not the error state set. You'll have to add extra structure around that part (instead of just returning the error location) to implementing full error reporting, which differs a lot depending on how you're using it.
 - This implementation has an arbitrary, right-to-left disambiguation strategy. This is OK for languages where ambiguity is an accident instead of a feature. If you need to fix it, my blog posts cover how to get left-to-right disambiguation with specific disambiguation rules. Basically:
 - - If you need left-to-right disambiguation, you'll need to reverse the grammar and input token stream before parsing. If the parse fails, unreverse them and parse again before producing error messages.
 - - If you need specific disambiguation rules, look at the data under each reduction pointer in a given list of reduction pointers, and apply your disambiguation rules to that data.
