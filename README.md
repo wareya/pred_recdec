@@ -2,6 +2,8 @@ Earley parser in pure Rust, written in a way that's meant to be "tutorializable"
 
 This is a 99% solution: you should copy it into your own codebase and adapt it, not use it as a library. **It fully works as-is**, but the exact way your program/library should implement Earley will depend on what else you have going on, so you should copy it and adapt.
 
+This implementation produces a syntax tree, but the necessary information for producing SPPFs (e.g. using Elizabeth Scott's algorithm) is all present and preserved. If you need an SPPF, you can adapt the code to produce one without much pain.
+
 You may use this code under any of the following licenses, at your choice: CC0, Unlicense, BSD-0, WTFPL. Optionally, I would appreciate a shoutout or "thanks" wherever the best place to put one is, if there is an appropriate place for one. Consider also thanking other existing Earley work if it's relevant to how you use this.
 
 Earley is a parsing algorithm that handles "pathological" grammars well. The implementation here has all the necessary modernizations to avoid the original 1968 version's problems: right recursion fix (1), nullability pre-advancement (2), reduction pointers (3), and pre-scanning (4).
