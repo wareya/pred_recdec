@@ -6,7 +6,9 @@ You may use this code under any of the following licenses, at your choice: CC0, 
 
 Earley is a parsing algorithm that handles "pathological" grammars well. The implementation here has all the necessary modernizations to avoid the original 1968 version's problems: right recursion fix (1), nullability pre-advancement (2), reduction pointers (3), and pre-scanning (4).
 
-Also, this is a "scannerful" implementation (i.e. it has a lexer/tokenizer): your tokenization needs are probably going to be slightly different, which is more reason that you should "copy paste and adapt" this. (And you *probably* shouldn't be using ambiguity-preserving algos like Earley for scannerless parsing; the extra costs associated with preserving ambiguity across lexical items makes everything way, way slower, so you should only go scannerless over ambiguity if it's absolutely necessary.)
+Also, this is a "scannerful" implementation (i.e. it has a lexer/tokenizer): your tokenization needs are probably going to be slightly different, which is more reason that you should "copy paste and adapt" this.
+
+Also, you *probably* shouldn't be using ambiguity-preserving algos like Earley for scannerless parsing; the extra costs associated with preserving ambiguity across lexical items makes everything way, way slower, so you should only go scannerless over ambiguity if it's absolutely necessary. You can adapt this to be scannerless if you're in one of those rare necessary situations, though: it's easier to go from scannerful to scannerless than the other way around.
 
 Even with this grammar, on the input string `a a a a a a ......`, this parser has no issues:
 
