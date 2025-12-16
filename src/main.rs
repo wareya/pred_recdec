@@ -43,17 +43,7 @@ A ::= "a" A | "a"
     println!("{:#?}", &g);
     
     let tokens = tokenize(&g, "
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-
+    
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
@@ -70,6 +60,10 @@ a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a 
     let tokens = tokens.unwrap();
     
     let start = std::time::Instant::now();
-    println!("{:#?}", earley_recognize(&g, "program", &tokens[..]));
-    println!("Time taken: {:?}", start.elapsed());
+    //println!("{:#?}", earley_recognize(&g, "program", &tokens[..]));
+    let ast = earley_parse(&g, "program", &tokens[..]);
+    println!("{}", ast.is_ok());
+    println!("Time taken: {:?} for {}", start.elapsed(), tokens.len());
+    let ast = ast.unwrap();
+    //println!("{:#?} {} {} {} {}", ast, ast.text, ast.children.as_ref().unwrap().len(), ast.token_start, ast.token_count);
 }

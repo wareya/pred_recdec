@@ -28,8 +28,7 @@ pub struct Grammar {
 
 #[derive(Debug, Clone)]
 pub struct GrammarPoint {
-    #[allow(unused)]
-    pub name: String,
+    pub name: Rc<String>,
     pub id: usize,
     pub forms: Vec<Alternation>,
 }
@@ -211,7 +210,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
         }
         points.push(GrammarPoint
         {
-            name: name.clone(),
+            name: Rc::new(name.clone()),
             id: index,
             forms,
         });
