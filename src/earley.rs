@@ -61,7 +61,7 @@ pub fn chart_add_if_not_invalid(g : &Grammar, tokens : &[Token], chart : &mut Ve
         match mt {
             //MatchingTerm::TermLit(text) => matched = tokens[col].text == *text,
             MatchingTerm::TermLit(text) => matched = Rc::ptr_eq(&tokens[col].text, text),
-            MatchingTerm::TermRegex(regex) => matched = regex.is_match(&*tokens[col].text),
+            MatchingTerm::TermRegex(regex) => matched = regex.is_match(&tokens[col].text),
             _ => matched = true,
         };
     }

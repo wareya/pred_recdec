@@ -71,7 +71,7 @@ pub fn packrat_parse_recursive_impl(cache : &mut HashMap<(usize, usize), Option<
             MatchingTerm::TermLit(lit) =>
                 token_match = token_i < tokens.len() && tokens[token_i].text == *lit,
             MatchingTerm::TermRegex(regex) =>
-                token_match = token_i < tokens.len() && regex.is_match(&*tokens[token_i].text),
+                token_match = token_i < tokens.len() && regex.is_match(&tokens[token_i].text),
         }
         if token_match
         {
@@ -190,7 +190,7 @@ pub fn packrat_parse_impl(_cache : &mut HashMap<(usize, usize), Option<Rc<RefCel
             MatchingTerm::TermLit(lit) =>
                 token_match = ctx.token_i < tokens.len() && tokens[ctx.token_i].text == *lit,
             MatchingTerm::TermRegex(regex) =>
-                token_match = ctx.token_i < tokens.len() && regex.is_match(&*tokens[ctx.token_i].text),
+                token_match = ctx.token_i < tokens.len() && regex.is_match(&tokens[ctx.token_i].text),
         }
         if token_match
         {

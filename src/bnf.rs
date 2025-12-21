@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::cell::RefCell;
 use regex::Regex;
 
 // Rust doesn't have these functions: check if a given byte index in a string is utf-8 or not.
@@ -15,6 +16,24 @@ pub fn check_char_at_byte(s : &str, i : usize) -> Option<char>
 pub fn get_char_at_byte(s : &str, i : usize) -> char
 {
     s[i..].chars().next().unwrap()
+}
+
+#[derive(Debug, Clone)]
+pub struct RegexCacher {
+    r : Regex,
+    cache : RefCell<HashMap<Rc<String>, bool>>,
+}
+
+impl RegexCacher {
+    pub fn new(r : Regex) -> RegexCacher { RegexCacher { r, cache : RefCell::new(HashMap::default()) } }
+    pub fn is_match(&self, s : &Rc<String>) -> bool
+    {
+        let mut cache = self.cache.borrow_mut();
+        if let Some(result) = cache.get(s) { return *result; }
+        let ret = self.r.is_match(&*s);
+        cache.insert(Rc::clone(s), ret);
+        ret
+    }
 }
 
 #[derive(Debug, Default)]
@@ -44,7 +63,7 @@ pub struct Alternation {
 pub enum MatchingTerm {
     Rule(usize),
     TermLit(Rc<String>),
-    TermRegex(Regex),
+    TermRegex(RegexCacher),
 }
 
 pub fn string_cache_lookup(string_cache : &mut HashMap<String, Rc<String>>, s : &str) -> Rc<String>
@@ -201,12 +220,12 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 if term_str.starts_with("rx%") && term_str.ends_with("%rx") && term_str.len() >= 6
                 {
                     let pattern = &term_str[3..term_str.len() - 3];
-                    let pattern_all = format!("\\A{pattern}\\z"); // narrowly full match
-                    let pattern = format!("\\A{pattern}"); // narrowly at start
+                    let pattern_all = format!("\\A{pattern}\\z"); // full match (for parsing)
+                    let pattern = format!("\\A{pattern}"); // at start (for tokenization)
                     let re = Regex::new(&pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
                     let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                     regexes.push(re.clone());
-                    matching_terms.push(MatchingTerm::TermRegex(re2));
+                    matching_terms.push(MatchingTerm::TermRegex(RegexCacher::new(re2)));
                     continue;
                 }
                 let id = by_name.get(term_str).ok_or_else(|| format!("Not a defined grammar rule: '{}'", term_str))?;
