@@ -52,13 +52,15 @@ pub struct ChartData {
 // This reduces the total amount of Stuff that the chart filler needs to process, saving a bit of time.
 pub fn chart_add_if_not_invalid(g : &Grammar, tokens : &[Token], chart : &mut Vec<VecSet<StateItem>>, col : usize, item : StateItem) -> Option<usize>
 {
+    if col > tokens.len() { return None; }
     let terms = &g.points[item.rule as usize].forms[item.alt as usize].matching_terms;
     let mut matched = true;
     if (item.pos as usize) < terms.len() && col < tokens.len()
     {
         let mt = &terms[item.pos as usize];
         match mt {
-            MatchingTerm::TermLit(text) => matched = *tokens[col].text == *text,
+            //MatchingTerm::TermLit(text) => matched = tokens[col].text == *text,
+            MatchingTerm::TermLit(text) => matched = Rc::ptr_eq(&tokens[col].text, text),
             MatchingTerm::TermRegex(regex) => matched = regex.is_match(&*tokens[col].text),
             _ => matched = true,
         };
@@ -161,7 +163,7 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Cha
                 }
             }
         }
-        else if col < tokens.len()
+        else if col <= tokens.len()
         {
             let mt = &terms[item.pos as usize];
             // Prediction
@@ -180,7 +182,7 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Cha
                 
                 // For nullables, preemptively perform their completion.
                 // This addresses an operation ordering edge case that breaks grammars like:
-                //     program ::= A A "a"
+                //     program ::= B B "a"
                 //     A ::= #intentionally empty
                 if is_nullable
                 {
@@ -207,7 +209,7 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Cha
                 }
             }
             // Scan
-            else
+            else if col < tokens.len()
             {
                 // Because of the prescan optimization (only adding scan items that aren't going to fail their scan phase),
                 //  we already know that scan items in the chart have to be valid, so we check validity on the progressed version instead.

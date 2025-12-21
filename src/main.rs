@@ -4,6 +4,9 @@ use bnf::*;
 mod earley;
 use earley::*;
 
+mod packrat;
+use packrat::*;
+
 // Removed the main function as it was extraneous.
 fn main() {
     /*
@@ -36,14 +39,14 @@ A ::= #intentionally empty
 "####;
 */
     let s = r####"
-program ::= B B A
-A ::= "a" A | "a" | "b" | "c" | "d" | "e" | "f" | "g"
+S ::= B B A B B
+A ::=  A "a" | "a" | "b" | "c" | "d" | "e" | "f" | "g"
 B ::=
 "####;
-    let g = bnf_to_grammar(&s).unwrap();
+    let mut g = bnf_to_grammar(&s).unwrap();
     println!("{:#?}", &g);
     
-    let tokens = tokenize(&g, "
+    let tokens = tokenize(&mut g, "
     
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
@@ -66,7 +69,7 @@ a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a 
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
-    
+
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
@@ -88,15 +91,18 @@ a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a 
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
 a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a   a a a a a a a a a a
+
 ");
     //println!("{:#?}", tokens);
     
     let tokens = tokens.unwrap();
     
     let start = std::time::Instant::now();
-    //println!("{:#?}", earley_recognize(&g, "program", &tokens[..]));
-    let ast = earley_parse(&g, "program", &tokens[..]);
+    //println!("{:#?}", earley_recognize(&g, "S", &tokens[..]));
+    let ast = earley_parse(&g, "S", &tokens[..]);
     println!("{}", ast.is_ok());
+    //let ast = packrat_parse(&g, "S", &tokens[..]);
+    //println!("{}", ast.is_ok());
     println!("Time taken: {:?} under {} items", start.elapsed(), tokens.len());
     //let ast = ast.unwrap();
     //println!("{:#?} {} {} {} {}", ast, ast.text, ast.children.as_ref().unwrap().len(), ast.token_start, ast.token_count);

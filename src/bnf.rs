@@ -24,6 +24,8 @@ pub struct Grammar {
     
     pub literals: Vec<String>,
     pub regexes: Vec<Regex>,
+    
+    pub string_cache : HashMap<String, Rc<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,14 +43,25 @@ pub struct Alternation {
 #[derive(Debug, Clone)]
 pub enum MatchingTerm {
     Rule(usize),
-    TermLit(String),
+    TermLit(Rc<String>),
     TermRegex(Regex),
+}
+
+pub fn string_cache_lookup(string_cache : &mut HashMap<String, Rc<String>>, s : &str) -> Rc<String>
+{
+    if let Some(s) = string_cache.get(s)
+    {
+        return Rc::clone(s);
+    }
+    let rc = Rc::new(s.to_string());
+    string_cache.insert(s.to_string(), Rc::clone(&rc));
+    rc
 }
 
 pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
 {
     let mut rules = Vec::new();
-
+    
     for (mut linenum, mut rest) in input.lines().enumerate()
     {
         linenum += 1; // user-facing line numbers are 1-indexed
@@ -162,8 +175,9 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
         }
     }
     
+    let mut string_cache = HashMap::new();
     let mut points = Vec::new();
-    let mut literals = Vec::new();
+    let mut literals = HashSet::new();
     let mut regexes = Vec::new();
     for (index, (name, raw_forms)) in input.iter().enumerate()
     {
@@ -180,8 +194,8 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     let mut literal = term_str[1..term_str.len() - 1].to_string();
                     literal = literal.replace("\\\"", "\"");
                     literal = literal.replace("\\\\", "\\");
-                    matching_terms.push(MatchingTerm::TermLit(literal.clone()));
-                    literals.push(literal.clone());
+                    matching_terms.push(MatchingTerm::TermLit(string_cache_lookup(&mut string_cache, &literal)));
+                    literals.insert(literal.clone());
                     continue;
                 }
                 if term_str.starts_with("rx%") && term_str.ends_with("%rx") && term_str.len() >= 6
@@ -220,7 +234,9 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
         return Err(format!("More than 4 billion grammar terms in grammar. What are you doing??? STOP!!!!! (╯°□°）╯︵ ┻━┻"));
     }
     
-    Ok(Grammar { points, by_name, literals, regexes })
+    let mut literals = literals.into_iter().collect::<Vec<_>>();
+    literals.sort();
+    Ok(Grammar { points, by_name, literals, regexes, string_cache })
 }
 
 pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
@@ -252,24 +268,14 @@ pub fn build_literal_regex(g : &Grammar) -> Regex
     text_token_regex
 }
 
-pub fn tokenize(g : &Grammar, mut s : &str) -> Result<Vec<Token>, String>
+pub fn tokenize(g : &mut Grammar, mut s : &str) -> Result<Vec<Token>, String>
 {
     let s_orig = s;
     let mut tokens = vec!();
     
     let all_literals_regex = build_literal_regex(g);
     
-    let mut string_cache : HashMap<String, Rc<String>> = HashMap::new();
-    let mut make_token = |s : &str|
-    {
-        if let Some(s) = string_cache.get(s)
-        {
-            return Token { text: Rc::clone(s) };
-        }
-        let rc = Rc::new(s.to_string());
-        string_cache.insert(s.to_string(), Rc::clone(&rc));
-        Token { text: rc }
-    };
+    let mut make_token = |s : &str| Token { text : string_cache_lookup(&mut g.string_cache, s) } ;
     
     for text in g.literals.iter()
     {
