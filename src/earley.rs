@@ -315,6 +315,7 @@ pub fn fix_missing_reductions(g : &Grammar, tokens : &[Token], data : &mut Chart
                     let new_row = chart_add_if_not_invalid(g, tokens, &mut data.chart, col, new_parent).unwrap();
                     
                     //data.chart[col].reductions.entry(new_row).or_insert_with(|| <_>::default()).insert(row);
+                    // FIXME: do an actual disambiguation test
                     data.chart[col].reductions.insert(new_row, row);
                     row = new_row;
                     item = data.chart[col][row].clone();
