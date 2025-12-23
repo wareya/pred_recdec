@@ -1,13 +1,16 @@
-use std::collections::{HashMap, HashSet};
+//use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::cell::RefCell;
+
+use rustc_hash::FxBuildHasher;
+type HashMap<K, V> = std::collections::HashMap::<K, V, FxBuildHasher>;
+type HashSet<T> = std::collections::HashSet::<T, FxBuildHasher>;
 
 use crate::bnf::*;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PackratASTNode {
     pub text : Rc<String>,
-    pub children : Option<Vec<Rc<RefCell<PackratASTNode>>>>,
+    pub children : Option<Vec<Rc<PackratASTNode>>>,
     pub token_start : usize,
     pub token_count : usize,
 }
@@ -22,10 +25,12 @@ impl Drop for PackratASTNode {
             let mut i = 0;
             while i < collected.len()
             {
-                let c = collected[i].borrow_mut().children.as_mut().map(|c| std::mem::take(c));
-                if let Some(mut c) = c
+                if let Some(c) = Rc::get_mut(&mut collected[i])
                 {
-                    collected.append(&mut c);
+                    if let Some(mut c) = c.children.take()
+                    {
+                        collected.append(&mut c);
+                    }
                 }
                 i += 1;
             }
@@ -33,13 +38,13 @@ impl Drop for PackratASTNode {
     }
 }
 
-pub fn packrat_parse_impl(_cache : &mut HashMap<(usize, usize), Option<Rc<RefCell<PackratASTNode>>>>, g : &Grammar, _gp_id : usize, tokens : &[Token], _token_start : usize) -> Result<Rc<RefCell<PackratASTNode>>, String>
+pub fn packrat_parse_impl(_cache : &mut HashMap<(usize, usize), Option<Rc<PackratASTNode>>>, g : &Grammar, _gp_id : usize, tokens : &[Token], _token_start : usize) -> Result<Rc<PackratASTNode>, String>
 {
     // _cache_ and _token_start are only included in the arg list for API parity with the recursive implementation
-    let mut cache = HashMap::new();
-    let mut work_started = HashSet::new();
+    let mut cache = HashMap::default();
+    let mut work_started = HashSet::default();
     struct ASTBuilderData<'a> {
-        children : Vec<Rc<RefCell<PackratASTNode>>>, forms : &'a Vec<Alternation>, terms : &'a Vec<MatchingTerm>,
+        children : Vec<Rc<PackratASTNode>>, forms : &'a Vec<Alternation>, terms : &'a Vec<MatchingTerm>,
         gp_id : usize, token_start : usize, token_i : usize, i : usize, j : usize,
     }
     impl<'a> ASTBuilderData<'a> {
@@ -69,12 +74,12 @@ pub fn packrat_parse_impl(_cache : &mut HashMap<(usize, usize), Option<Rc<RefCel
         if ctx.i == 0 && ctx.j == 0 { work_started.insert(ctx.start_identity_tuple()); }
         if !stash.is_empty() && !(ctx.i < ctx.forms.len() && ctx.j < ctx.terms.len() && ctx.token_i <= tokens.len())
         {
-            cache.insert((ctx.gp_id, ctx.token_start), Some(Rc::new(RefCell::new(PackratASTNode {
+            cache.insert((ctx.gp_id, ctx.token_start), Some(Rc::new(PackratASTNode {
                 text : Rc::clone(&g.points[ctx.gp_id].name),
                 token_start : ctx.token_start,
                 token_count : ctx.token_i - ctx.token_start,
                 children : Some(ctx.children.clone())
-            }))));
+            })));
             ctx = stash.pop().unwrap();
             continue;
         }
@@ -114,7 +119,7 @@ pub fn packrat_parse_impl(_cache : &mut HashMap<(usize, usize), Option<Rc<RefCel
                 if let Some(child) = cached
                 {
                     let child = child.clone();
-                    ctx.token_i += child.borrow().token_count;
+                    ctx.token_i += child.token_count;
                     ctx.children.push(child);
                 }
             }
@@ -125,10 +130,10 @@ pub fn packrat_parse_impl(_cache : &mut HashMap<(usize, usize), Option<Rc<RefCel
         }
         if token_match
         {
-            ctx.children.push(Rc::new(RefCell::new(PackratASTNode {
+            ctx.children.push(Rc::new(PackratASTNode {
                 text : Rc::clone(&tokens[ctx.token_i].text),
                 children : None, token_start : ctx.token_i, token_count : 1,
-            })));
+            }));
             ctx.token_i += 1;
         }
         
@@ -155,25 +160,25 @@ pub fn packrat_parse_impl(_cache : &mut HashMap<(usize, usize), Option<Rc<RefCel
             ctx.terms = &ctx.forms[ctx.i].matching_terms;
         }
     }
-    let ret = Ok(Rc::new(RefCell::new(PackratASTNode {
+    let ret = Ok(Rc::new(PackratASTNode {
         text : Rc::clone(&g.points[ctx.gp_id].name),
         token_start : ctx.token_start,
         token_count : ctx.token_i - ctx.token_start,
         children : Some(ctx.children)
-    })));
+    }));
     ret
 }
 
 #[allow(unused)]
-pub fn packrat_parse(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Result<Rc<RefCell<PackratASTNode>>, String>
+pub fn packrat_parse(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Result<Rc<PackratASTNode>, String>
 {
     let gp_id = g.by_name.get(root_rule_name).unwrap();
-    let mut cache = HashMap::new();
+    let mut cache = HashMap::default();
     let ret = packrat_parse_impl(&mut cache, g, *gp_id, tokens, 0);
     if let Ok(ret) = ret
     {
-        if ret.borrow().token_count == tokens.len() { return Ok(ret); }
-        println!("? {} {}", ret.borrow().token_count, tokens.len());
+        if ret.token_count == tokens.len() { return Ok(ret); }
+        println!("? {} {}", ret.token_count, tokens.len());
         return Err("Failed to match entire input string".into());
     }
     ret

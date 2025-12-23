@@ -42,7 +42,8 @@ A ::= #intentionally empty
 */
     let s = r####"
 S ::= A
-A ::= A "a" | "a"
+#A ::= "a" A | "a" # packrat's preference
+A ::= A "a" | "a" # earley's preference
 "####;
     let mut g = bnf_to_grammar(&s).unwrap();
     println!("{:#?}", &g);

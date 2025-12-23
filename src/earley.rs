@@ -1,5 +1,9 @@
-use std::collections::{HashMap, HashSet};
+//use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+
+use rustc_hash::FxBuildHasher;
+type HashMap<K, V> = std::collections::HashMap::<K, V, FxBuildHasher>;
+type HashSet<T> = std::collections::HashSet::<T, FxBuildHasher>;
 
 use crate::bnf::*;
 
@@ -43,8 +47,8 @@ pub struct ChartColumn {
     c : VecSet<StateItem>,
     // Reduction pointers: necessary to be able to reconstruct an AST or SPPF from most parses.
     // Pointers from parent row to child row in same column, at time of completion.
-    //reductions : Box<HashMap<usize, HashSet<usize>>>,
-    reductions : Box<HashMap<usize, usize>>,
+    reductions : Box<HashMap<usize, HashSet<usize>>>,
+    //reductions : Box<HashMap<usize, usize>>,
 }
 impl std::ops::Index<usize> for ChartColumn
 {
@@ -121,6 +125,7 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Cha
             // Set up reduction pointers. These are necessary for disambiguation.
             // We do this here instead of during completion because handling nullable rules is a lot simpler this way.
             // If you want maximum performance instead: do it during completion, and also when preemptively completing nullables.
+            
             let mut reductions = HashMap::<usize, HashSet<usize>>::default();
             for (row, item) in chart[col].c.v.iter().enumerate()
             {
@@ -131,27 +136,50 @@ pub fn chart_fill(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> Cha
                     {
                         if let Some(&new_row) = chart[col].c.s.get(&chart[item.start][*parent_row].clone_progressed())
                         {
-                            reductions.entry(new_row).or_insert_with(|| <_>::default()).insert(row);
+                            let item = chart[col].c[row].clone();
+                            let e = reductions.entry(new_row).or_insert_with(|| <_>::default());
+                            let prev_best = if let Some(&r) = e.iter().next() { chart[col].c[r].alt } else { item.alt };
+                            if item.alt < prev_best { e.clear(); }
+                            
+                            if item.alt <= prev_best { e.insert(row); }
                         }
                     }
                 }
             }
-            let mut reductions_disambiguated = HashMap::<usize, usize>::default();
-            for (row, set) in reductions
+            chart[col].reductions = Box::new(reductions);
+            
+            /*
+            let mut reductions = HashMap::<usize, usize>::default();
+            for (next, item) in chart[col].c.v.iter().enumerate()
             {
-                let mut best = *set.iter().next().unwrap();
-                for &next in set.iter().skip(1)
+                let terms = &g.points[item.rule as usize].forms[item.alt as usize].matching_terms;
+                if item.pos as usize >= terms.len() && let Some(set) = origin_sets.get(&(item.start, item.rule as usize))
                 {
-                    let best_item = chart[col][best].clone();
-                    let item = chart[col][next].clone();
-                    if item.alt < best_item.alt { best = next; continue; }
-                    // TODO: we're tied. check child / reduction target alt values now.
-                    // TODO: -- too complicated to write. do a length preference fallback for now.
-                    if item.alt == best_item.alt && item.start < best_item.start { best = next; continue; }
+                    for parent_row in set
+                    {
+                        if let Some(&new_row) = chart[col].c.s.get(&chart[item.start][*parent_row].clone_progressed())
+                        {
+                            if let Some(&best) = reductions.get(&new_row)
+                            {
+                                let best_item = chart[col][best].clone();
+                                let item = chart[col][next].clone();
+                                if item.alt < best_item.alt { reductions.insert(new_row, next); continue; }
+                                // TODO: we're tied. check child / reduction target alt values now.
+                                // TODO: -- too complicated to write. do a length preference fallback for now.
+                                if item.alt == best_item.alt && item.start < best_item.start { reductions.insert(new_row, next); continue; }
+                            }
+                            else
+                            {
+                                reductions.insert(new_row, next);
+                                continue;
+                            }
+                        }
+                    }
                 }
-                reductions_disambiguated.insert(row, best);
             }
-            chart[col].reductions = Box::new(reductions_disambiguated);
+            chart[col].reductions = Box::new(reductions);
+            */
+            
             col += 1;
             row = 0;
             continue;
@@ -314,11 +342,18 @@ pub fn fix_missing_reductions(g : &Grammar, tokens : &[Token], data : &mut Chart
                     let new_parent = data.chart[item.start][*parent_row].clone_progressed();
                     let new_row = chart_add_if_not_invalid(g, tokens, &mut data.chart, col, new_parent).unwrap();
                     
-                    //data.chart[col].reductions.entry(new_row).or_insert_with(|| <_>::default()).insert(row);
-                    // FIXME: do an actual disambiguation test
+                    let chart = &mut data.chart[col];
+                    let e = chart.reductions.entry(new_row).or_insert_with(|| <_>::default());
+                    let prev_best = if let Some(&r) = e.iter().next() { chart.c[r].alt } else { item.alt };
+                    if item.alt < prev_best { e.clear(); }
+                    
+                    if item.alt <= prev_best { e.insert(row); }
+                    /*
+                    // FIXME: do actual disambiguation
                     data.chart[col].reductions.insert(new_row, row);
+                    */
                     row = new_row;
-                    item = data.chart[col][row].clone();
+                    item = data.chart[col][new_row].clone();
                 }
             }
         }
@@ -368,8 +403,8 @@ pub fn build_ast_node(g : &Grammar, tokens : &[Token], data : &mut ChartData, co
             fix_missing_reductions(g, tokens, data, ctx.col, ctx.row);
             
             // For now we arbitrarily pick whichever reduction is in the front.
-            //let child_row = *data.chart[ctx.col].reductions.get(&ctx.row).unwrap().iter().next().unwrap();
-            let child_row = *data.chart[ctx.col].reductions.get(&ctx.row).unwrap();
+            let child_row = *data.chart[ctx.col].reductions.get(&ctx.row).unwrap().iter().next().unwrap();
+            //let child_row = *data.chart[ctx.col].reductions.get(&ctx.row).unwrap();
             
             let child_item = &data.chart[ctx.col][child_row];
             let gp = &g.points[child_item.rule as usize];
