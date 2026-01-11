@@ -180,3 +180,23 @@ pub fn packrat_parse(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> 
     }
     ret
 }
+
+#[allow(unused)]
+pub fn print_ast_packrat(ast : &PackratASTNode, indent : usize)
+{
+    print!("{}", " ".repeat(indent));
+    if let Some(c) = &ast.children
+    {
+        println!("{} {{", ast.text);
+        for c in c
+        {
+            print_ast_packrat(c, indent+1);
+        }
+        print!("{}", " ".repeat(indent));
+        println!("}}");
+    }
+    else
+    {
+        println!("{}", ast.text);
+    }
+}

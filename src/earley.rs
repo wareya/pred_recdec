@@ -480,3 +480,23 @@ pub fn earley_parse(g : &Grammar, root_rule_name : &str, tokens : &[Token]) -> R
     }
     Err((chart.len(), false))
 }
+
+#[allow(unused)]
+pub fn print_ast_earley(ast : &ASTNode, indent : usize)
+{
+    print!("{}", " ".repeat(indent));
+    if let Some(c) = &ast.children
+    {
+        println!("{} {{", ast.text);
+        for c in c
+        {
+            print_ast_earley(c, indent+1);
+        }
+        print!("{}", " ".repeat(indent));
+        println!("}}");
+    }
+    else
+    {
+        println!("{}", ast.text);
+    }
+}
