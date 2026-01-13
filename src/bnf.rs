@@ -81,15 +81,32 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
 {
     let mut rules = Vec::new();
     
+    let mut metalist = Vec::new();
+    let mut current = Vec::new();
+    
+    let mut name : Option<String> = None;
+    let mut found_separator = false;
+    
     for (mut linenum, mut rest) in input.lines().enumerate()
     {
         linenum += 1; // user-facing line numbers are 1-indexed
         
-        let mut name : Option<String> = None;
-        let mut found_separator = false;
+        let _split = rest.trim().split_whitespace().collect::<Vec<_>>();
         
-        let mut metalist = Vec::new();
-        let mut current = Vec::new();
+        if _split.get(1) == Some(&"::=") // ::= is only allowed as the second token on a line and must be space-separated
+        {
+            if name.is_some()
+            {
+                metalist.push(current);
+                rules.push((name.unwrap(), metalist));
+            }
+            
+            name = None;
+            found_separator = false;
+            metalist = Vec::new();
+            current = Vec::new();
+        }
+        
         while !rest.is_empty()
         {
             // skip extra whitespace
@@ -175,11 +192,14 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
                 rest = &rest[end..];
             }
         }
-        if !found_separator { continue; }
+    }
+    
+    if name.is_some()
+    {
         metalist.push(current);
-        if name.is_none() { continue; }
         rules.push((name.unwrap(), metalist));
     }
+    
     Ok(rules)
 }
 
@@ -214,6 +234,13 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     literal = literal.replace("\\\"", "\"");
                     literal = literal.replace("\\\\", "\\");
                     matching_terms.push(MatchingTerm::TermLit(string_cache_lookup(&mut string_cache, &literal)));
+                    if literal.contains(" ")
+                    {
+                        for s in literal.split_whitespace()
+                        {
+                            string_cache_lookup(&mut string_cache, &s);
+                        }
+                    }
                     literals.insert(literal.clone());
                     continue;
                 }
