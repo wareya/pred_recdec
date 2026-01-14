@@ -6,7 +6,7 @@ This lets you write a "grammar" that has the same capabilities as a handwritten 
 
 Keeping as much in BNF as possible leaves the easy 90% of your grammar in a highly maintainable format, makes it easier to change technologies or languages, and makes it much simpler to write verification or testing rigs.
 
-Currently a prototype. Example grammar snippets:
+Currently a prototype. Actually works, but not finished. Example grammar snippets:
 
 Stateful symbol table management:
 ```r
