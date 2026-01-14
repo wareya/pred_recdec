@@ -45,6 +45,7 @@ pub struct Grammar {
     pub regexes: Vec<Regex>,
     
     pub string_cache : HashMap<String, Rc<String>>,
+    pub random_regex_cache : HashMap<Rc<String>, RegexCacher>,
 }
 
 #[derive(Debug, Clone)]
@@ -215,6 +216,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     }
     
     let mut string_cache = HashMap::new();
+    let mut random_regex_cache = HashMap::new();
     let mut points = Vec::new();
     let mut literals = HashSet::new();
     let mut regexes = Vec::new();
@@ -238,7 +240,14 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     {
                         for s in literal.split_whitespace()
                         {
-                            string_cache_lookup(&mut string_cache, &s);
+                            // Build and place cache entry
+                            let s2 = string_cache_lookup(&mut string_cache, &s);
+                            let pattern_all = format!("\\A{s2}\\z"); // full match
+                            if let Ok(re2) = Regex::new(&pattern_all)
+                            {
+                                // Try to give it a regex too
+                                random_regex_cache.insert(s2, RegexCacher::new(re2));
+                            }
                         }
                     }
                     literals.insert(literal.clone());
@@ -250,8 +259,8 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     let pattern_all = format!("\\A{pattern}\\z"); // full match (for parsing)
                     let pattern = format!("\\A{pattern}"); // at start (for tokenization)
                     let re = Regex::new(&pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
-                    let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                     regexes.push(re.clone());
+                    let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                     matching_terms.push(MatchingTerm::TermRegex(RegexCacher::new(re2)));
                     continue;
                 }
@@ -282,7 +291,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     
     let mut literals = literals.into_iter().collect::<Vec<_>>();
     literals.sort();
-    Ok(Grammar { points, by_name, literals, regexes, string_cache })
+    Ok(Grammar { points, by_name, literals, regexes, string_cache, random_regex_cache })
 }
 
 pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
