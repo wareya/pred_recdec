@@ -1,10 +1,10 @@
 # Pred Recdec
 
-"Predicated" recursive descent parsing framework. Write 90% of your grammar in plain BNF, ignore all the boilerplate, and write the remaining 10% as hooks. Supports many highly context-sensitive grammars.
+"Predicated" recursive descent parsing framework. Write 90% of your grammar in plain BNF, skip the boilerplate, and write the remaining 10% as hooks. Supports most slightly context-sensitive grammars, including typedefs. Basic lookahead and "tail calls" are built in, so you don't have to add hooks for super basic LL(k) functionality, just write the peek statements. This mirrors how most high-performance parsers are written today, just in a BNF shell.
 
-This lets you write a "grammar" that has the same capabilities as a handwritten recursive descent parser. You can do computations on lookahead, skip around brackets and braces, update and query symbol tables, etc. You can even do loops by tail-calling into subrules, again, while writing 90% of your grammar in BNF.
+This lets you write a "grammar" that has the same capabilities as a handwritten recursive descent parser. You can do computations on lookahead, skip around brackets and braces, update and query symbol tables, etc. There's no risk of or need to worry about backtracking (unless you do so yourself inside of a hook), so you can make your hooks as impure and stateful as you want. The tokenizer is non-lexing, or in other words, late-binding, so you don't need to worry about writing a lexical grammar; maximal munch is handled for you automatically.
 
-This leaves the easy 90% of your grammar in a highly maintainable format, makes it easier to change technologies or languages, and makes it much simpler to write verification or testing rigs.
+Keeping as much in BNF as possible leaves the easy 90% of your grammar in a highly maintainable format, makes it easier to change technologies or languages, and makes it much simpler to write verification or testing rigs.
 
 Currently a prototype. Example grammar snippets:
 
@@ -57,3 +57,12 @@ expr5_tail ::=
 expr0 ::= rx%[0-9]+%rx
 unarify ::= "!HOOK unary"
 ```
+
+TODO:
+
+- New syntax for peek/guard, hook, and become, instead of piggybacking on top of impossible literals
+- Optional bracket pairing
+- @AUTO guard
+- Warning when it's obvious that not all alternations are reachable
+- Custom comment patterns (nesting and non-nesting)
+- Error recovery support-and-seek annotations (needs research on established/common techniques)
