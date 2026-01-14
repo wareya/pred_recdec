@@ -4,7 +4,7 @@
 
 This lets you write a "grammar" that has the same capabilities as a handwritten recursive descent parser. You can do computations on lookahead, skip around brackets and braces, update and query symbol tables, etc. There's no risk of or need to worry about backtracking (unless you do so yourself inside of a hook), so you can make your hooks as impure and stateful as you want. The tokenizer is non-lexing, or in other words, late-binding, so you don't need to worry about writing a lexical grammar; maximal munch is handled for you automatically.
 
-Keeping as much in BNF as possible leaves the easy 90% of your grammar in a highly maintainable format, makes it easier to change technologies or languages, and makes it much simpler to write verification or testing rigs.
+Keeping as much in BNF as possible leaves the easy 90% of your grammar in a highly maintainable format, makes it easier to change technologies or languages, and makes it much simpler to write verification or testing rigs. The way that non-BNF extensions are written is "you can learn it by just looking at it", and is not symbol stew.
 
 Currently a prototype. Actually works, but not finished. Example grammar snippets:
 
