@@ -11,7 +11,7 @@ use crate::bnf::*;
 pub struct PrdASTNode {
     pub text : Rc<String>,
     pub children : Option<Vec<Box<PrdASTNode>>>,
-    pub token_start : usize,
+    #[allow(unused)] pub token_start : usize,
     pub token_count : usize,
 }
 
@@ -38,7 +38,7 @@ impl Drop for PrdASTNode {
 pub enum GuardResult {
     Accept,
     Reject,
-    HardError(String)
+    #[allow(unused)] HardError(String)
 }
 
 pub struct PrdGlobal<'a> {
@@ -50,7 +50,7 @@ pub struct PrdGlobal<'a> {
     #[allow(unused)] pub udata_u : HashMap<String, f64>,
     #[allow(unused)] pub udata_a : HashMap<String, Box<dyn std::any::Any>>,
     
-    pub g : &'a Grammar,
+    #[allow(unused)] pub g : &'a Grammar,
 }
 
 pub fn pred_recdec_parse_impl_recursive(
