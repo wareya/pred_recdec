@@ -56,6 +56,26 @@ expr5_tail ::=
 expr0 ::= rx%[0-9]+%rx
 unarify ::= "!HOOK unary"
 ```
+Example output of the "custom guards/hooks" example for `9152 5 3`:
+```r
+S {
+ expr5 {
+  expr0 {
+   9152
+  }
+  expr5_tail {
+   expr0 {
+    5
+   }
+  }
+ }
+ unarify {
+  1
+  1
+  1
+ }
+}
+```
 
 TODO:
 
