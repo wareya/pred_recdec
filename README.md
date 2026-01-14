@@ -34,7 +34,6 @@ expr ::=
     | "@PEEK 0 false" "false"
     | rx%[0-9]+%rx
 block ::= "@PEEK 0 {" "{" statement "}" | statement
-"####;
 ```
 
 Almost Pratt parsing (without the table):
