@@ -36,7 +36,7 @@ expr ::=
 block ::= "@PEEK 0 {" "{" statement "}" | statement
 ```
 Example output for `if true if true 555; else 555;`:
-```
+```r
 S {
  statement {
   ifcond {
