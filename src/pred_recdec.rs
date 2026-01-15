@@ -45,10 +45,7 @@ pub struct PrdGlobal<'a> {
     pub guards : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>,
     pub hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<PrdASTNode>>) -> Result<usize, String>>>,
     
-    #[allow(unused)] pub udata_s : HashMap<String, String>,
-    #[allow(unused)] pub udata_i : HashMap<String, i64>,
-    #[allow(unused)] pub udata_u : HashMap<String, f64>,
-    #[allow(unused)] pub udata_a : HashMap<String, Box<dyn std::any::Any>>,
+    #[allow(unused)] pub udata : HashMap<std::any::TypeId, Box<dyn std::any::Any>>,
     
     #[allow(unused)] pub g : &'a Grammar,
 }
@@ -78,49 +75,39 @@ pub fn pred_recdec_parse_impl_recursive(
         let mut accepted = true;
         match alt.matching_terms.get(0)
         {
-            // PROTOTYPE: FIXME: use `@PEEK(0, "a", "b", ...)` syntax instead of `"PEEK 0 a b"` syntax
-            Some(MatchingTerm::TermLit(lit)) =>
+            Some(MatchingTerm::Guard(guard)) =>
             {
-                if lit.starts_with("@GUARD ")
+                if let Some(f) = global.guards.get(&**guard)
                 {
-                    accepted = false;
-                    let list = lit.splitn(2, " ").collect::<Vec<_>>();
-                    if let Some(n) = list.get(1) && let Some(f) = global.guards.get(*n)
+                    let f = Rc::clone(&f);
+                    match f(global, tokens, i)
                     {
-                        let f = Rc::clone(&f);
-                        match f(global, tokens, i)
-                        {
-                            GuardResult::Accept => accepted = true,
-                            GuardResult::HardError(e) => { return Err(e); }
-                            _ => {}
-                        }
+                        GuardResult::Accept => accepted = true,
+                        GuardResult::HardError(e) => { return Err(e); }
+                        _ => {}
                     }
-                    else
-                    {
-                        return Err(format!("Unknown custom guard {:?} inside of {chosen_name}", list.get(1)));
-                    };
-                    term_idx += 1;
                 }
-                else if lit.starts_with("@PEEK ") || lit.starts_with("@PEEKR ")
+                term_idx += 1;
+            }
+            Some(MatchingTerm::Peek(loc, tester)) =>
+            {
+                accepted = false;
+                let loc = (i as isize + loc) as usize;
+                if loc < tokens.len() && Rc::ptr_eq(&tokens[loc].text, tester)
                 {
-                    accepted = false;
-                    let list = lit.splitn(3, " ").collect::<Vec<_>>();
-                    if list.len() == 3 && let Ok(loc) = list[1].parse::<isize>()
-                    {
-                        let loc = (i as isize + loc) as usize;
-                        let n = g.string_cache.get(list[2]).unwrap();
-                        if loc < tokens.len() && lit.starts_with("@PEEK ") && Rc::ptr_eq(&tokens[loc].text, n)
-                        {
-                            accepted = true;
-                        }
-                        else if loc < tokens.len() && lit.starts_with("@PEEKR ") &&
-                            let Some(r) = g.random_regex_cache.get(n) && r.is_match(&tokens[loc].text)
-                        {
-                            accepted = true;
-                        }
-                    }
-                    term_idx += 1;
+                    accepted = true;
                 }
+                term_idx += 1;
+            }
+            Some(MatchingTerm::PeekR(loc, tester)) =>
+            {
+                accepted = false;
+                let loc = (i as isize + loc) as usize;
+                if loc < tokens.len() && tester.is_match(&tokens[loc].text)
+                {
+                    accepted = true;
+                }
+                term_idx += 1;
             }
             _ => {}
         }
@@ -129,48 +116,27 @@ pub fn pred_recdec_parse_impl_recursive(
         
         while term_idx < alt.matching_terms.len()
         {
-            let clen_start = children.len();
             let term = &alt.matching_terms[term_idx];
+            let mut matched = false;
             match term {
                 MatchingTerm::Rule(id) =>
                 {
                     let child = pred_recdec_parse_impl_recursive(global, g, *id, tokens, depth + 1, i)?;
                     i += child.token_count;
                     children.push(child);
+                    matched = true;
                 }
                 MatchingTerm::TermLit(lit) =>
                 {
-                    if lit.starts_with("!HOOK ")
-                    {
-                        let list = lit.splitn(2, " ").collect::<Vec<_>>();
-                        if let Some(n) = list.get(1) && let Some(f) = global.hooks.get(*n)
-                        {
-                            let f = Rc::clone(&f);
-                            match f(global, tokens, i, &mut children)
-                            {
-                                Ok(consumed) => { i += consumed; }
-                                Err(e) => { return Err(e); }
-                            }
-                        }
-                        else
-                        {
-                            return Err(format!("Unknown custom hook {:?} inside of {chosen_name}", list.get(1)));
-                        };
-                    }
                     // PROTOTYPE: FIXME: use `$BECOME` instead of `"$BECOME"`
-                    else if **lit == "$BECOME" && let Some(MatchingTerm::Rule(id)) = alt.matching_terms.get(term_idx + 1)
-                    {
-                        g_item = &g.points[*id];
-                        alt_id = 0;
-                        continue 'top;
-                    }
-                    else if i < tokens.len() && tokens[i].text == *lit
+                    if i < tokens.len() && tokens[i].text == *lit
                     {
                         children.push(Box::new(PrdASTNode {
                             text : tokens[i].text.clone(), children : None,
                             token_start : i, token_count : 1,
                         }));
                         i += 1;
+                        matched = true;
                     }
                 }
                 MatchingTerm::TermRegex(regex) => if i < tokens.len() && regex.is_match(&tokens[i].text)
@@ -180,13 +146,48 @@ pub fn pred_recdec_parse_impl_recursive(
                         token_start : i, token_count : 1,
                     }));
                     i += 1;
+                    matched = true;
                 }
+                MatchingTerm::Directive(d) =>
+                {
+                    match d
+                    {
+                        MatchDirective::Become =>
+                        {
+                            if let Some(MatchingTerm::Rule(id)) = alt.matching_terms.get(term_idx + 1)
+                            {
+                                g_item = &g.points[*id];
+                                alt_id = 0;
+                                continue 'top;
+                            }
+                        }
+                        _ => panic!("TODO: {:?}", d), // also TODO: combine into parent match once all implemented
+                    }
+                }
+                MatchingTerm::Hook(name) =>
+                {
+                    if let Some(f) = global.hooks.get(&**name)
+                    {
+                        let f = Rc::clone(&f);
+                        match f(global, tokens, i, &mut children)
+                        {
+                            Ok(consumed) => { i += consumed; }
+                            Err(e) => Err(e)?
+                        }
+                    }
+                    else
+                    {
+                        Err(format!("Unknown custom hook {:?} inside of {chosen_name}", name))?
+                    }
+                    matched = true;
+                }
+                _ => Err(format!("Term type {:?} not supported in this position in a rule (context: {chosen_name})", term))?
             }
-            if children.len() == clen_start
+            if !matched
             {
-                return Err(format!("Failed to match token at {i} in rule {chosen_name}. Token is `{:?}`", tokens.get(i).map(|x| x.text.clone())));
+                Err(format!("Failed to match token at {i} in rule {chosen_name} alt {alt_id}. Token is `{:?}`. Rule is {:?}", tokens.get(i).map(|x| x.text.clone()), term))?
             }
-            if term_idx == alt.matching_terms.len() && depth == 0 && i < tokens.len() { return Err(format!("Incomplete parse. Ended at {i}")); }
+            //if term_idx == alt.matching_terms.len() && depth == 0 && i < tokens.len() { return Err(format!("Incomplete parse. Ended at {i}")); }
             term_idx += 1;
         }
         
@@ -212,10 +213,7 @@ pub fn pred_recdec_force_parse(
     let mut global = PrdGlobal {
         guards,
         hooks,
-        udata_s : <_>::default(),
-        udata_i : <_>::default(),
-        udata_u : <_>::default(),
-        udata_a : <_>::default(),
+        udata : <_>::default(),
         g,
     };
     

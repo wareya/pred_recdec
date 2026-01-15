@@ -1,18 +1,6 @@
 mod bnf;
 use bnf::*;
 
-mod earley;
-#[allow(unused)]
-use earley::*;
-
-mod packrat;
-#[allow(unused)]
-use packrat::*;
-
-mod brute_force;
-#[allow(unused)]
-use brute_force::*;
-
 mod pred_recdec;
 #[allow(unused)]
 use pred_recdec::*;
@@ -91,42 +79,42 @@ expr ::= rx%[0-9]+%rx
 /*
     let s = r####"
 S ::= statement
-statement ::= "@PEEK 0 if" ifcond | expr ";"
+statement ::= @peek(0, "if") ifcond | expr ";"
 ifcond ::= "if" expr block else_maybe
-else_maybe ::= "@PEEK 0 else" "else" block | #intentionally empty
+else_maybe ::= @peek(0, "else") "else" block | #intentionally empty
 expr ::= 
-    "@PEEK 0 true" "true"
-    | "@PEEK 0 false" "false"
+    @peek(0, "true") "true"
+    | @peek(0, "false") "false"
     | rx%[0-9]+%rx
-block ::= "@PEEK 0 {" "{" statement "}" | statement
+block ::= @peek(0, "{") "{" statement "}" | statement
 "####;
 */
     let s = r####"
 S ::= expr5
-expr5 ::= expr0 "$BECOME" expr5_tail
+expr5 ::= expr0 $become expr5_tail
 expr5_tail ::=
-    "@PEEKR 0 [*%/]" rx%[*%/]%rx expr0 "$BECOME" expr5_tail
+    @peekr(0, rx%[*%/]%rx) rx%[*%/]%rx expr0 $become expr5_tail
     | #intentionally empty
 expr0 ::= rx%[0-9]+%rx
 "####;
-    /*
+/*
     let s = r####"
 S ::= expr5 unarify
 expr5 ::= expr0 expr5_tail
 expr5_tail ::=
-    "@GUARD odd" expr0
+    @guard(odd) expr0
     | #intentionally empty
 expr0 ::= rx%[0-9]+%rx
-unarify ::= "!HOOK unary"
+unarify ::= !hook(unary)
 "####;
-    */
+*/
     let mut g = bnf_to_grammar(&s).unwrap();
     println!("{:#?}", &g);
     
     //let tokens = tokenize(&mut g, &"a a a a a a a a a a   \n".repeat(10000));
     //let tokens = tokenize(&mut g, &"if 1 then if 325 then 1953 else 15\n");
     //let tokens = tokenize(&mut g, &"a a a a a a x");
-    //let tokens = tokenize(&mut g, &"iftrue iftrue 555 else 555");
+    //let tokens = tokenize(&mut g, &"if true if true 555; else 555;");
     //let tokens = tokenize(&mut g, &"if true true;");
     let tokens = tokenize(&mut g, &"5 * 2 * 5 * 1 * 2 * 9153");
     //let tokens = tokenize(&mut g, &"9152 6 3");

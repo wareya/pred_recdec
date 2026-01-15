@@ -11,29 +11,29 @@ Currently a prototype. Actually works, but not finished. Example grammar snippet
 Stateful symbol table management:
 ```r
 STATEMENT ::=
-    "@GUARD found_typedef" "!HOOK process_typedef"
-    | "@GUARD no_invalid_types" TYPENAMELIST BINDING ";"
+@guard(found_typedef) !hook(process_typedef)
+    | @guard(no_invalid_types) TYPENAMELIST BINDING ";"
     | FUNCCALL ";"
 
 FUNCCALL ::=
     IDENT "(" FUNCARGLIST ")"
 
 BINDING ::=
-    "@PEEK 0 (" "(" BINDING ")"
+    @peek(0, "(") "(" BINDING ")"
     | IDENT
 ```
 
 Dangling else:
 ```r
 S ::= statement
-statement ::= "@PEEK 0 if" ifcond | expr ";"
+statement ::= @peek(0, "if") ifcond | expr ";"
 ifcond ::= "if" expr block else_maybe
-else_maybe ::= "@PEEK 0 else" "else" block | #intentionally empty
+else_maybe ::= @peek(0, "else") "else" block | #intentionally empty
 expr ::= 
-    "@PEEK 0 true" "true"
-    | "@PEEK 0 false" "false"
+    @peek(0, "true") "true"
+    | @peek(0, "false") "false"
     | rx%[0-9]+%rx
-block ::= "@PEEK 0 {" "{" statement "}" | statement
+block ::= @peek(0, "{") "{" statement "}" | statement
 ```
 Example output for `if true if true 555; else 555;`:
 ```r
@@ -83,9 +83,9 @@ S {
 Almost Pratt parsing (without the table):
 ```r
 S ::= expr5
-expr5 ::= expr0 "$BECOME" expr5_tail
+expr5 ::= expr0 $become expr5_tail
 expr5_tail ::=
-    "@PEEKR 0 [*%/]" rx%[*%/]%rx expr0 "$BECOME" expr5_tail
+    @peekr(0, rx%[*%/]%rx) rx%[*%/]%rx expr0 $become expr5_tail
     | #intentionally empty
 expr0 ::= rx%[0-9]+%rx
 ```
@@ -125,10 +125,10 @@ Dumb-as-rocks custom guards and hooks:
 S ::= expr5 unarify
 expr5 ::= expr0 expr5_tail
 expr5_tail ::=
-    "@GUARD odd" expr0
+    @guard(odd) expr0
     | #intentionally empty
 expr0 ::= rx%[0-9]+%rx
-unarify ::= "!HOOK unary"
+unarify ::= !hook(unary)
 ```
 Example output of the "custom guards/hooks" example for `9152 5 3`:
 ```r
@@ -153,9 +153,8 @@ S {
 
 TODO:
 
-- New syntax for peek/guard, hook, and become, instead of piggybacking on top of impossible literals
 - Optional bracket pairing
-- @AUTO guard
+- @auto guard
 - Warning when it's obvious that not all alternations are reachable
 - Custom comment patterns (nesting and non-nesting)
 - Error recovery support-and-seek annotations (needs research on established/common techniques)

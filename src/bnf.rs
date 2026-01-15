@@ -45,7 +45,6 @@ pub struct Grammar {
     pub regexes: Vec<Regex>,
     
     pub string_cache : HashMap<String, Rc<String>>,
-    pub random_regex_cache : HashMap<Rc<String>, RegexCacher>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,10 +60,21 @@ pub struct Alternation {
 }
 
 #[derive(Debug, Clone)]
+pub enum MatchDirective {
+    Become, Hoist, Skip, Drop, Pruned,
+}
+
+#[derive(Debug, Clone)]
 pub enum MatchingTerm {
     Rule(usize),
     TermLit(Rc<String>),
     TermRegex(RegexCacher),
+    
+    Peek(isize, Rc<String>),
+    PeekR(isize, RegexCacher),
+    Guard(Rc<String>),
+    Hook(Rc<String>),
+    Directive(MatchDirective),
 }
 
 pub fn string_cache_lookup(string_cache : &mut HashMap<String, Rc<String>>, s : &str) -> Rc<String>
@@ -160,7 +170,12 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
                 found_separator = true;
                 rest = &rest[3..];
             }
-            // alternation
+            // operators
+            else if  rest.starts_with("(") || rest.starts_with(")") || rest.starts_with(",")
+            {
+                current.push(rest[0..1].to_string());
+                rest = &rest[1..];
+            }
             else if rest.starts_with("|")
             {
                 if !found_separator { return Err(format!("Missing ::= on line {linenum}")); }
@@ -174,7 +189,7 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
                 let mut end = rest.len();
                 for (i, ch) in rest.char_indices()
                 {
-                    if ch.is_whitespace() || ch == '|' || ch == '"' || ch == '#'
+                    if ch.is_whitespace() || ch == '|' || ch == '(' || ch == ')' || ch == ',' || ch == '"' || ch == '#'
                         || rest[i..].starts_with("::=") || rest[i..].starts_with("rx%")
                     {
                         end = i;
@@ -216,7 +231,6 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     }
     
     let mut string_cache = HashMap::new();
-    let mut random_regex_cache = HashMap::new();
     let mut points = Vec::new();
     let mut literals = HashSet::new();
     let mut regexes = Vec::new();
@@ -226,30 +240,20 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
         
         for raw_alt in raw_forms
         {
+            println!("{:?}", raw_forms);
             let mut matching_terms = Vec::new();
             
-            for term_str in raw_alt
+            let mut i = 0;
+            while i < raw_alt.len()
             {
+                let term_str = &raw_alt[i];
+                i += 1;
+                
                 if term_str.starts_with('"') && term_str.ends_with('"') && term_str.len() >= 2
                 {
-                    let mut literal = term_str[1..term_str.len() - 1].to_string();
-                    literal = literal.replace("\\\"", "\"");
-                    literal = literal.replace("\\\\", "\\");
+                    let literal = term_str[1..term_str.len() - 1].replace("\\\"", "\"").replace("\\\\", "\\");
                     matching_terms.push(MatchingTerm::TermLit(string_cache_lookup(&mut string_cache, &literal)));
-                    if literal.contains(" ")
-                    {
-                        for s in literal.split_whitespace()
-                        {
-                            // Build and place cache entry
-                            let s2 = string_cache_lookup(&mut string_cache, &s);
-                            let pattern_all = format!("\\A{s2}\\z"); // full match
-                            if let Ok(re2) = Regex::new(&pattern_all)
-                            {
-                                // Try to give it a regex too
-                                random_regex_cache.insert(s2, RegexCacher::new(re2));
-                            }
-                        }
-                    }
+                    
                     literals.insert(literal.clone());
                     continue;
                 }
@@ -264,7 +268,74 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     matching_terms.push(MatchingTerm::TermRegex(RegexCacher::new(re2)));
                     continue;
                 }
-                let id = by_name.get(term_str).ok_or_else(|| format!("Not a defined grammar rule: '{}'", term_str))?;
+                if (term_str == "@PEEK" || term_str == "@peek" || term_str == "@PEEKR" || term_str == "@peekr") && i + 4 < raw_alt.len()
+                {
+                    if raw_alt[i] != "(" || raw_alt[i+2] != "," || raw_alt[i+4] != ")"
+                    {
+                        return Err(format!("Invalid peek syntax: must be @peek(num, str)"));
+                    }
+                    let n = raw_alt[i+1].parse::<isize>().map_err(|_| format!("Not a supported peek distance: {}", raw_alt[i+1]))?;
+                    if term_str == "@PEEK" || term_str == "@peek"
+                    {
+                        let literal = &raw_alt[i+3];
+                        if literal.len() < 2 || !literal.starts_with("\"") || !literal.ends_with("\"")
+                        {
+                            return Err(format!("@peek guards only accept plain strings"));
+                        }
+                        let literal = literal[1..literal.len() - 1].replace("\\\"", "\"").replace("\\\\", "\\");
+                        let s = string_cache_lookup(&mut string_cache, &literal);
+                        matching_terms.push(MatchingTerm::Peek(n, s));
+                    }
+                    else
+                    {
+                        let pattern = &raw_alt[i+3];
+                        if !pattern.starts_with("rx%") || !pattern.ends_with("%rx")
+                        {
+                            return Err(format!("@peekr guards only accept regex strings"));
+                        }
+                        let pattern = &pattern[3..pattern.len() - 3];
+                        let pattern_all = format!("\\A{}\\z", pattern);
+                        let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
+                        matching_terms.push(MatchingTerm::PeekR(n, RegexCacher::new(re2)));
+                    }
+                    i += 5;
+                    continue;
+                }
+                if (term_str == "@GUARD" || term_str == "@guard") && i + 2 < raw_alt.len()
+                {
+                    if raw_alt[i] != "(" || raw_alt[i+2] != ")"
+                    {
+                        return Err(format!("Invalid guard syntax: must be @guard(name)"));
+                    }
+                    let literal = &raw_alt[i+1];
+                    let s = string_cache_lookup(&mut string_cache, &literal);
+                    matching_terms.push(MatchingTerm::Guard(s));
+                    i += 3;
+                    continue;
+                }
+                if (term_str == "!HOOK" || term_str == "!hook") && i + 2 < raw_alt.len()
+                {
+                    if raw_alt[i] != "(" || raw_alt[i+2] != ")"
+                    {
+                        return Err(format!("Invalid hook syntax: must be @hook(name)"));
+                    }
+                    let literal = &raw_alt[i+1];
+                    let s = string_cache_lookup(&mut string_cache, &literal);
+                    matching_terms.push(MatchingTerm::Hook(s));
+                    i += 3;
+                    continue;
+                }
+                if matches!(&**term_str, "$BECOME" | "$become")
+                {
+                    matching_terms.push(MatchingTerm::Directive(MatchDirective::Become));
+                    continue;
+                }
+                if matches!(&**term_str, "$BECOME" | "$become")
+                {
+                    matching_terms.push(MatchingTerm::Directive(MatchDirective::Become));
+                    continue;
+                }
+                let id = by_name.get(term_str).ok_or_else(|| format!("Not a defined grammar rule: '{term_str}' (context: '{name}')"))?;
                 matching_terms.push(MatchingTerm::Rule(*id));
             }
             if matching_terms.len() > 60000
@@ -291,7 +362,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     
     let mut literals = literals.into_iter().collect::<Vec<_>>();
     literals.sort();
-    Ok(Grammar { points, by_name, literals, regexes, string_cache, random_regex_cache })
+    Ok(Grammar { points, by_name, literals, regexes, string_cache })
 }
 
 pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
@@ -317,7 +388,10 @@ pub fn build_literal_regex(g : &Grammar) -> Regex
         text_token_regex_s += &s2;
         text_token_regex_s += "|";
     }
-    text_token_regex_s.pop();
+    if lits.len() > 0
+    {
+        text_token_regex_s.pop();
+    }
     text_token_regex_s += ")";
     let text_token_regex = Regex::new(&text_token_regex_s).unwrap();
     text_token_regex
@@ -371,6 +445,7 @@ pub fn tokenize(g : &mut Grammar, mut s : &str) -> Result<Vec<Token>, String>
     Ok(tokens)
 }
 
+#[allow(unused)]
 pub fn find_nullables(g : &Grammar) -> HashSet<(usize, usize)>
 {
     // Following from: https://cs.stackexchange.com/questions/164696/
