@@ -35,6 +35,50 @@ expr ::=
     | rx%[0-9]+%rx
 block ::= "@PEEK 0 {" "{" statement "}" | statement
 ```
+Example output for `if true if true 555; else 555;`:
+```
+S {
+ statement {
+  ifcond {
+   if
+   expr {
+    true
+   }
+   block {
+    statement {
+     ifcond {
+      if
+      expr {
+       true
+      }
+      block {
+       statement {
+        expr {
+         555
+        }
+        ;
+       }
+      }
+      else_maybe {
+       else
+       block {
+        statement {
+         expr {
+          555
+         }
+         ;
+        }
+       }
+      }
+     }
+    }
+   }
+   else_maybe {
+   }
+  }
+ }
+}
+```
 
 Almost Pratt parsing (without the table):
 ```r
@@ -44,6 +88,36 @@ expr5_tail ::=
     "@PEEKR 0 [*%/]" rx%[*%/]%rx expr0 "$BECOME" expr5_tail
     | #intentionally empty
 expr0 ::= rx%[0-9]+%rx
+```
+Example output for a `5 * 2 * 5 * 1 * 2 * 9153`:
+```r
+S {
+ expr5 {
+  expr0 {
+   5
+  }
+  *
+  expr0 {
+   2
+  }
+  *
+  expr0 {
+   5
+  }
+  *
+  expr0 {
+   1
+  }
+  *
+  expr0 {
+   2
+  }
+  *
+  expr0 {
+   9153
+  }
+ }
+}
 ```
 
 Dumb-as-rocks custom guards and hooks:
