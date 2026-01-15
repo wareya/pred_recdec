@@ -11,16 +11,16 @@ Currently a prototype. Actually works, but not finished. Example grammar snippet
 Stateful symbol table management:
 ```r
 STATEMENT ::=
-"@GUARD found_typedef" "!HOOK process_typedef"
-| "@GUARD no_invalid_types" TYPENAMELIST BINDING ";"
-| FUNCCALL ";"
+    "@GUARD found_typedef" "!HOOK process_typedef"
+    | "@GUARD no_invalid_types" TYPENAMELIST BINDING ";"
+    | FUNCCALL ";"
 
 FUNCCALL ::=
-IDENT "(" FUNCARGLIST ")"
+    IDENT "(" FUNCARGLIST ")"
 
 BINDING ::=
-"@PEEK 0 (" "(" BINDING ")"
-| IDENT
+    "@PEEK 0 (" "(" BINDING ")"
+    | IDENT
 ```
 
 Dangling else:
