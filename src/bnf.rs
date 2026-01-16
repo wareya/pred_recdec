@@ -243,7 +243,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
         
         for raw_alt in raw_forms
         {
-            println!("{:?}", raw_forms);
+            println!("{:?}", raw_alt);
             let mut matching_terms = Vec::new();
             
             let mut i = 0;
@@ -304,6 +304,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                         let pattern = &pattern[2..pattern.len() - 2];
                         let pattern_all = format!("\\A{}\\z", pattern);
                         let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
+                        // TODO: make regex cachers use interior mutability and share the cache
                         matching_terms.push(MatchingTerm::PeekR(n, RegexCacher::new(re2)));
                     }
                     i += 5;
@@ -372,6 +373,18 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
         if forms.len() > 60000
         {
             Err(format!("More than 60k alternations in {name}. Factor them out, dummy!"))?
+        }
+        let mut num_nonguards = 0;
+        for f in &forms
+        {
+            if num_nonguards != 0
+            {
+                eprintln!("!!!!!!\n!!!!!! Warning: rule {name} has at least one alternation that is inaccessible!\n!!!!!!");
+                break;
+            }
+            if !(if let Some(x) = f.matching_terms.get(0) // early 2026: working around not-yet-supported syntax
+                && matches!(x, MatchingTerm::Peek(_, _) | MatchingTerm::PeekR(_, _) |MatchingTerm::Guard(_)) { true } else { false })
+            { num_nonguards += 1; }
         }
         points.push(GrammarPoint
         {

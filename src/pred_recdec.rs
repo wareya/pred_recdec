@@ -128,7 +128,6 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 MatchingTerm::TermLit(lit) =>
                 {
-                    // PROTOTYPE: FIXME: use `$BECOME` instead of `"$BECOME"`
                     if i < tokens.len() && tokens[i].text == *lit
                     {
                         children.push(Box::new(PrdASTNode {
@@ -199,7 +198,7 @@ pub fn pred_recdec_parse_impl_recursive(
         }));
     }
     
-    return Err("FIXME".to_string());
+    Err(format!("Failed to match rule {chosen_name} at token position {token_start}"))
 }
 
 #[allow(unused)]
