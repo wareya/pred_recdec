@@ -232,7 +232,7 @@ pub fn print_ast_pred_recdec(ast : &PrdASTNode, indent : usize)
             print_ast_pred_recdec(c, indent+1);
         }
         print!("{}", " ".repeat(indent));
-        println!("}}");
+        println!("}};");
     }
     else
     {

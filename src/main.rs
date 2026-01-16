@@ -94,6 +94,7 @@ __COMMENTS ::= //
 __COMMENT_REGEXES ::= r`(?s)<!--.*?-->`r
 __COMMENT_PAIRS ::= /* */ | {* *}
 __BRACKET_PAIRS ::= { } | ( ) | [ ]
+__RESERVED_WORDS ::= 67 | 420 | if
 
 S ::= expr5
 expr5 ::= expr0 $become expr5_tail
@@ -126,7 +127,7 @@ unarify ::= !hook(unary)
     //let tokens = tokenize(&mut g, &"5 * 2 * 5 * 1 * 2 * 9153");
     let tokens = tokenize(&mut g, & r#"
     <!-- ( -->
-    5 * (2 * 5) * ((1 * 2 * 9153))
+    5 * (2 * 5) * ((1 * 2 * 9153 * 670))
     "#);
     //let tokens = tokenize(&mut g, &"9152 6 3");
 

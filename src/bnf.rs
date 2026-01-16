@@ -50,6 +50,7 @@ pub struct Grammar {
     pub comments : Vec<String>,
     pub comment_pairs : Vec<(String, String)>,
     pub comment_regexes : Vec<Regex>,
+    pub reserved : Option<Regex>,
 }
 
 #[derive(Debug, Clone)]
@@ -230,7 +231,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     let mut by_name = HashMap::new();
     for (name, _) in input.iter()
     {
-        if matches!(&**name, "__BRACKET_PAIRS" | "__COMMENT_PAIRS" | "__COMMENT_REGEXES" | "__COMMENTS") { continue; }
+        if matches!(&**name, "__BRACKET_PAIRS" | "__COMMENT_PAIRS" | "__COMMENT_REGEXES" | "__COMMENTS" | "__RESERVED_WORDS") { continue; }
         if by_name.insert(name.clone(), by_name.len()).is_some()
         {
             return Err(format!("Duplicate rule {name}; use alternations (e.g. x ::= a | b), not additional definitions (like x ::= a [...] x ::= b)"));
@@ -247,8 +248,19 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     let mut comment_regexes = Vec::new();
     let mut comments = Vec::new();
     
+    let mut reserved = None;
     for (name, raw_forms) in input.iter()
     {
+        if name == "__RESERVED_WORDS"
+        {
+            let mut set = Vec::new();
+            for s in raw_forms.iter().map(|x| x.iter()).flatten()
+            {
+                set.push(s.clone());
+            }
+            reserved = Some(build_literal_regex(&set, true));
+            continue;
+        }
         if name == "__BRACKET_PAIRS" || name == "__COMMENT_PAIRS"
         {
             for raw_alt in raw_forms
@@ -446,7 +458,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     
     let mut literals = literals.into_iter().collect::<Vec<_>>();
     literals.sort();
-    Ok(Grammar { points, by_name, literals, regexes, string_cache, bracket_pairs, comments, comment_pairs, comment_regexes })
+    Ok(Grammar { points, by_name, literals, regexes, string_cache, bracket_pairs, comments, comment_pairs, comment_regexes, reserved })
 }
 
 pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
@@ -461,11 +473,11 @@ pub struct Token {
 }
 
 // Sort literals from grammar by length and combine them into a single match-longest regex.
-pub fn build_literal_regex(g : &Grammar) -> Regex
+pub fn build_literal_regex(literals : &Vec<String>, terminated : bool) -> Regex
 {
-    let mut text_token_regex_s = "^(".to_string();
+    let mut text_token_regex_s = "\\A(".to_string();
     
-    let mut lits = g.literals.clone();
+    let mut lits = literals.clone();
     lits.sort_by(|a, b| b.len().cmp(&a.len()));
     for text in lits.iter()
     {
@@ -473,11 +485,9 @@ pub fn build_literal_regex(g : &Grammar) -> Regex
         text_token_regex_s += &s2;
         text_token_regex_s += "|";
     }
-    if lits.len() > 0
-    {
-        text_token_regex_s.pop();
-    }
+    if lits.len() > 0 { text_token_regex_s.pop(); }
     text_token_regex_s += ")";
+    if terminated { text_token_regex_s += "\\z"; }
     let text_token_regex = Regex::new(&text_token_regex_s).unwrap();
     text_token_regex
 }
@@ -490,7 +500,7 @@ pub fn tokenize(
     let s_orig = s;
     let mut tokens = Vec::<Token>::new();
     
-    let all_literals_regex = build_literal_regex(g);
+    let all_literals_regex = build_literal_regex(&g.literals, false);
     
     for text in g.literals.iter()
     {
@@ -559,13 +569,17 @@ pub fn tokenize(
                 continue 'top;
             }
         }
-        
+        // Maximal munch: Regex pass
         let mut longest = 0;
         for r in &g.regexes
         {
             if let Some(loc) = r.find(s).map(|x| x.len())
             {
-                longest = longest.max(loc);
+                if let Some(r) = &g.reserved
+                {
+                    if !r.is_match(&s[..loc]) { longest = longest.max(loc); }
+                }
+                else { longest = longest.max(loc); }
             }
         }
         if let Some(loc) = all_literals_regex.find(s).map(|x| x.len())
@@ -574,7 +588,7 @@ pub fn tokenize(
         }
         if longest == 0
         {
-            return Err(format!("Failed to tokenize at index {}", s_orig.len()-s.len()));
+            return Err(format!("Failed to tokenize at index {}:{}[...]", s_orig.len()-s.len(), &s[..5.min(s.len())]));
         }
         
         let text = string_cache_lookup(&mut g.string_cache, &s[..longest]);
