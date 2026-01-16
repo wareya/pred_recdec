@@ -45,6 +45,8 @@ pub struct Grammar {
     pub regexes: Vec<Regex>,
     
     pub string_cache : HashMap<String, Rc<String>>,
+    
+    pub bracket_pairs : Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +77,7 @@ pub enum MatchingTerm {
     Guard(Rc<String>),
     Hook(Rc<String>),
     Directive(MatchDirective),
+    _AutoTemp,
 }
 
 pub fn string_cache_lookup(string_cache : &mut HashMap<String, Rc<String>>, s : &str) -> Rc<String>
@@ -154,11 +157,11 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
                 rest = &rest[len..];
             }
             // regex
-            else if rest.starts_with("rx%")
+            else if rest.starts_with("r`")
             {
                 if !found_separator { return Err(format!("Missing ::= on line {linenum}")); }
-                let end = rest[3..].find("%rx").expect(&format!("Unterminated regex on line {linenum}"));
-                let len = end + 6;
+                let end = rest[2..].find("`r").expect(&format!("Unterminated regex on line {linenum}"));
+                let len = end + 4;
                 current.push(rest[..len].to_string());
                 rest = &rest[len..];
             }
@@ -190,7 +193,7 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
                 for (i, ch) in rest.char_indices()
                 {
                     if ch.is_whitespace() || ch == '|' || ch == '(' || ch == ')' || ch == ',' || ch == '"' || ch == '#'
-                        || rest[i..].starts_with("::=") || rest[i..].starts_with("rx%")
+                        || rest[i..].starts_with("::=") || rest[i..].starts_with("r`")
                     {
                         end = i;
                         break;
@@ -257,15 +260,20 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     literals.insert(literal.clone());
                     continue;
                 }
-                if term_str.starts_with("rx%") && term_str.ends_with("%rx") && term_str.len() >= 6
+                if term_str.starts_with("r`") && term_str.ends_with("`r") && term_str.len() >= 4
                 {
-                    let pattern = &term_str[3..term_str.len() - 3];
+                    let pattern = &term_str[2..term_str.len() - 2];
                     let pattern_all = format!("\\A{pattern}\\z"); // full match (for parsing)
                     let pattern = format!("\\A{pattern}"); // at start (for tokenization)
                     let re = Regex::new(&pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
                     regexes.push(re.clone());
                     let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                     matching_terms.push(MatchingTerm::TermRegex(RegexCacher::new(re2)));
+                    continue;
+                }
+                if matches!(&**term_str, "@AUTO" | "@auto")
+                {
+                    matching_terms.push(MatchingTerm::_AutoTemp);
                     continue;
                 }
                 if (term_str == "@PEEK" || term_str == "@peek" || term_str == "@PEEKR" || term_str == "@peekr") && i + 4 < raw_alt.len()
@@ -289,11 +297,11 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     else
                     {
                         let pattern = &raw_alt[i+3];
-                        if !pattern.starts_with("rx%") || !pattern.ends_with("%rx")
+                        if !pattern.starts_with("r`") || !pattern.ends_with("`r")
                         {
                             return Err(format!("@peekr guards only accept regex strings"));
                         }
-                        let pattern = &pattern[3..pattern.len() - 3];
+                        let pattern = &pattern[2..pattern.len() - 2];
                         let pattern_all = format!("\\A{}\\z", pattern);
                         let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                         matching_terms.push(MatchingTerm::PeekR(n, RegexCacher::new(re2)));
@@ -340,13 +348,30 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
             }
             if matching_terms.len() > 60000
             {
-                return Err(format!("More than 60k items in an alternation of {name}. Factor them out, dummy!"));
+                Err(format!("More than 60k items in an alternation of {name}. Factor them out, dummy!"))?
+            }
+            if let Some(MatchingTerm::_AutoTemp) = matching_terms.get(0)
+            {
+                match matching_terms.get(1)
+                {
+                    Some(MatchingTerm::TermLit(s)) =>
+                    {
+                        let s = Rc::clone(s);
+                        matching_terms[0] = MatchingTerm::Peek(0, s);
+                    }
+                    Some(MatchingTerm::TermRegex(r)) =>
+                    {
+                        let r = r.clone();
+                        matching_terms[0] = MatchingTerm::PeekR(0, r);
+                    }
+                    _ => Err(format!("@auto must be followed by a string literal or regex literal (context: {name})"))?
+                }
             }
             forms.push(Alternation { matching_terms });
         }
         if forms.len() > 60000
         {
-            return Err(format!("More than 60k alternations in {name}. Factor them out, dummy!"));
+            Err(format!("More than 60k alternations in {name}. Factor them out, dummy!"))?
         }
         points.push(GrammarPoint
         {
@@ -357,12 +382,12 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     }
     if points.len() > 4000000000
     {
-        return Err(format!("More than 4 billion grammar terms in grammar. What are you doing??? STOP!!!!! (╯°□°）╯︵ ┻━┻"));
+        Err(format!("More than 4 billion grammar terms in grammar. What are you doing??? STOP!!!!! (╯°□°）╯︵ ┻━┻"))?
     }
     
     let mut literals = literals.into_iter().collect::<Vec<_>>();
     literals.sort();
-    Ok(Grammar { points, by_name, literals, regexes, string_cache })
+    Ok(Grammar { points, by_name, literals, regexes, string_cache, bracket_pairs : Vec::new() })
 }
 
 pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
@@ -373,6 +398,7 @@ pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
 #[derive(Debug, Clone, Default)]
 pub struct Token {
     pub text : Rc<String>,
+    pub pair : isize,
 }
 
 // Sort literals from grammar by length and combine them into a single match-longest regex.
@@ -397,18 +423,30 @@ pub fn build_literal_regex(g : &Grammar) -> Regex
     text_token_regex
 }
 
-pub fn tokenize(g : &mut Grammar, mut s : &str) -> Result<Vec<Token>, String>
+pub fn tokenize(
+    g : &mut Grammar,
+    mut s : &str
+) -> Result<Vec<Token>, String>
 {
     let s_orig = s;
-    let mut tokens = vec!();
+    let mut tokens = Vec::<Token>::new();
     
     let all_literals_regex = build_literal_regex(g);
     
-    let mut make_token = |s : &str| Token { text : string_cache_lookup(&mut g.string_cache, s) } ;
-    
     for text in g.literals.iter()
     {
-        make_token(text);
+        string_cache_lookup(&mut g.string_cache, text);
+    }
+    
+    let mut openers = HashSet::new();
+    let mut closers = HashMap::new();
+    let mut stacks = HashMap::new();
+    for (l, r) in &g.bracket_pairs
+    {
+        let lsc = string_cache_lookup(&mut g.string_cache, &l);
+        openers.insert(Rc::clone(&lsc));
+        closers.insert(string_cache_lookup(&mut g.string_cache, &r), Rc::clone(&lsc));
+        stacks.insert(lsc, Vec::<usize>::new());
     }
     
     while !s.is_empty()
@@ -439,8 +477,22 @@ pub fn tokenize(g : &mut Grammar, mut s : &str) -> Result<Vec<Token>, String>
             return Err(format!("Failed to tokenize at index {}", s_orig.len()-s.len()));
         }
         
-        tokens.push(make_token(&s[..longest]));
+        let text = string_cache_lookup(&mut g.string_cache, &s[..longest]);
+        let mut token = Token { text : Rc::clone(&text), pair : 0 };
+        if openers.contains(&text) && let Some(s) = stacks.get_mut(&text)
+        {
+            s.push(tokens.len());
+        }
+        if let Some(l) = closers.get(&text) && let Some(s) = stacks.get_mut(l)
+        {
+            let n = s.pop().ok_or_else(|| format!("Unmatched delimiter at {}: {}", s_orig.len() - s.len(), text))?;
+            let me = tokens.len();
+            let diff = me.checked_signed_diff(n).ok_or_else(|| format!("Input too long"))?;
+            token.pair = -diff;
+            tokens[n].pair = diff;
+        }
         s = &s[longest..];
+        tokens.push(token);
     }
     Ok(tokens)
 }

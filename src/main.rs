@@ -27,8 +27,8 @@ binexpr_1 ::= binexpr_1 binop_1 core_expr | core_expr
 binop_1 ::= "*" | "/"
 core_expr ::= identifier | number
 
-identifier ::= rx%[a-zA-Z_][a-zA-Z_0-9]*%rx
-number ::= rx%[0-9]+(\.[0-9]+)?%rx
+identifier ::= r`[a-zA-Z_][a-zA-Z_0-9]*`r
+number ::= r`[0-9]+(\.[0-9]+)?`r
 "####;
 */
 /*
@@ -49,7 +49,7 @@ A ::= A "a" | "a" # earley's preference
 S ::= expr
 expr ::= if | num
 if ::= "if" expr "then" expr "else" expr | "if" expr "then" expr
-num ::= rx%[0-9]+%rx
+num ::= r`[0-9]+`r
 "####;
 */
 /*
@@ -73,7 +73,7 @@ S ::= C
 A ::= "iftrue" C | expr
 B ::= "iftrue" C "else" C | expr
 C ::= "iftrue" C "else" C | "iftrue" C | expr
-expr ::= rx%[0-9]+%rx
+expr ::= r`[0-9]+`r
 "####;
 */
 /*
@@ -85,7 +85,7 @@ else_maybe ::= @peek(0, "else") "else" block | #intentionally empty
 expr ::= 
     @peek(0, "true") "true"
     | @peek(0, "false") "false"
-    | rx%[0-9]+%rx
+    | r`[0-9]+`r
 block ::= @peek(0, "{") "{" statement "}" | statement
 "####;
 */
@@ -93,9 +93,11 @@ block ::= @peek(0, "{") "{" statement "}" | statement
 S ::= expr5
 expr5 ::= expr0 $become expr5_tail
 expr5_tail ::=
-    @peekr(0, rx%[*%/]%rx) rx%[*%/]%rx expr0 $become expr5_tail
+    @auto r`[*%/]`r expr0 $become expr5_tail
     | #intentionally empty
-expr0 ::= rx%[0-9]+%rx
+expr0 ::= 
+    @auto "(" expr5")"
+    | r`[0-9]+`r
 "####;
 /*
     let s = r####"
@@ -104,11 +106,12 @@ expr5 ::= expr0 expr5_tail
 expr5_tail ::=
     @guard(odd) expr0
     | #intentionally empty
-expr0 ::= rx%[0-9]+%rx
+expr0 ::= r`[0-9]+`r
 unarify ::= !hook(unary)
 "####;
 */
     let mut g = bnf_to_grammar(&s).unwrap();
+    g.bracket_pairs.push(("(".to_string(), ")".to_string()));
     println!("{:#?}", &g);
     
     //let tokens = tokenize(&mut g, &"a a a a a a a a a a   \n".repeat(10000));
@@ -116,10 +119,11 @@ unarify ::= !hook(unary)
     //let tokens = tokenize(&mut g, &"a a a a a a x");
     //let tokens = tokenize(&mut g, &"if true if true 555; else 555;");
     //let tokens = tokenize(&mut g, &"if true true;");
-    let tokens = tokenize(&mut g, &"5 * 2 * 5 * 1 * 2 * 9153");
+    //let tokens = tokenize(&mut g, &"5 * 2 * 5 * 1 * 2 * 9153");
+    let tokens = tokenize(&mut g, &"5 * (2 * 5) * ((1 * 2 * 9153))");
     //let tokens = tokenize(&mut g, &"9152 6 3");
 
-    //println!("{:#?}", tokens);
+    println!("{:#?}", tokens);
     
     let tokens = tokens.unwrap();
     

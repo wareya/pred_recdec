@@ -153,8 +153,6 @@ S {
 
 TODO:
 
-- Optional bracket pairing
-- @auto guard
 - Warning when it's obvious that not all alternations are reachable
 - Custom comment patterns (nesting and non-nesting)
 - Error recovery support-and-seek annotations (needs research on established/common techniques)
