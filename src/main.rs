@@ -90,6 +90,11 @@ block ::= @peek(0, "{") "{" statement "}" | statement
 "####;
 */
     let s = r####"
+__COMMENTS ::= //
+__COMMENT_REGEXES ::= r`(?s)<!--.*?-->`r
+__COMMENT_PAIRS ::= /* */ | {* *}
+__BRACKET_PAIRS ::= { } | ( ) | [ ]
+
 S ::= expr5
 expr5 ::= expr0 $become expr5_tail
 expr5_tail ::=
@@ -111,7 +116,6 @@ unarify ::= !hook(unary)
 "####;
 */
     let mut g = bnf_to_grammar(&s).unwrap();
-    g.bracket_pairs.push(("(".to_string(), ")".to_string()));
     println!("{:#?}", &g);
     
     //let tokens = tokenize(&mut g, &"a a a a a a a a a a   \n".repeat(10000));
@@ -120,7 +124,10 @@ unarify ::= !hook(unary)
     //let tokens = tokenize(&mut g, &"if true if true 555; else 555;");
     //let tokens = tokenize(&mut g, &"if true true;");
     //let tokens = tokenize(&mut g, &"5 * 2 * 5 * 1 * 2 * 9153");
-    let tokens = tokenize(&mut g, &"5 * (2 * 5) * ((1 * 2 * 9153))");
+    let tokens = tokenize(&mut g, & r#"
+    <!-- ( -->
+    5 * (2 * 5) * ((1 * 2 * 9153))
+    "#);
     //let tokens = tokenize(&mut g, &"9152 6 3");
 
     println!("{:#?}", tokens);

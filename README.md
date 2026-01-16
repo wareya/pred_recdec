@@ -153,6 +153,5 @@ S {
 
 TODO:
 
-- Custom comment patterns (nesting and non-nesting)
 - Error recovery support-and-seek annotations (needs research on established/common techniques)
 - Write a full C99 grammar

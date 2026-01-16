@@ -47,6 +47,9 @@ pub struct Grammar {
     pub string_cache : HashMap<String, Rc<String>>,
     
     pub bracket_pairs : Vec<(String, String)>,
+    pub comments : Vec<String>,
+    pub comment_pairs : Vec<(String, String)>,
+    pub comment_regexes : Vec<Regex>,
 }
 
 #[derive(Debug, Clone)]
@@ -225,9 +228,10 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
 pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Grammar, String>
 {
     let mut by_name = HashMap::new();
-    for (index, (name, _)) in input.iter().enumerate()
+    for (name, _) in input.iter()
     {
-        if by_name.insert(name.clone(), index).is_some()
+        if matches!(&**name, "__BRACKET_PAIRS" | "__COMMENT_PAIRS" | "__COMMENT_REGEXES" | "__COMMENTS") { continue; }
+        if by_name.insert(name.clone(), by_name.len()).is_some()
         {
             return Err(format!("Duplicate rule {name}; use alternations (e.g. x ::= a | b), not additional definitions (like x ::= a [...] x ::= b)"));
         }
@@ -237,8 +241,50 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     let mut points = Vec::new();
     let mut literals = HashSet::new();
     let mut regexes = Vec::new();
-    for (index, (name, raw_forms)) in input.iter().enumerate()
+    
+    let mut bracket_pairs = Vec::new();
+    let mut comment_pairs = Vec::new();
+    let mut comment_regexes = Vec::new();
+    let mut comments = Vec::new();
+    
+    for (name, raw_forms) in input.iter()
     {
+        if name == "__BRACKET_PAIRS" || name == "__COMMENT_PAIRS"
+        {
+            for raw_alt in raw_forms
+            {
+                match (raw_alt.get(0), raw_alt.get(1))
+                {
+                    (Some(l), Some(r)) =>
+                    {
+                        if name == "__BRACKET_PAIRS" { bracket_pairs.push((l.clone(), r.clone())); }
+                        if name == "__COMMENT_PAIRS" { comment_pairs.push((l.clone(), r.clone())); }
+                    }
+                    _ => Err(format!("Alternations of __BRACKET_PAIRS must all contain two bare string items"))?
+                }
+            }
+            continue;
+        }
+        if name == "__COMMENT_REGEXES" || name == "__COMMENTS"
+        {
+            for s in raw_forms.iter().map(|x| x.iter()).flatten()
+            {
+                if name == "__COMMENT_REGEXES" && s.starts_with("r`") && s.ends_with("`r") && s.len() >= 4
+                {
+                    let pattern = &s[2..s.len() - 2];
+                    let pattern = format!("\\A{pattern}");
+                    let re = Regex::new(&pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
+                    comment_regexes.push(re);
+                }
+                if name == "__COMMENTS" && s.len() >= 1
+                {
+                    comments.push(s.clone());
+                }
+            }
+            continue;
+        }
+        let index = *by_name.get(name).unwrap();
+        
         let mut forms = Vec::new();
         
         for raw_alt in raw_forms
@@ -254,7 +300,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 
                 if term_str.starts_with('"') && term_str.ends_with('"') && term_str.len() >= 2
                 {
-                    let literal = term_str[1..term_str.len() - 1].replace("\\\"", "\"").replace("\\\\", "\\");
+                    let literal = term_str[1..term_str.len() - 1].replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n");
                     matching_terms.push(MatchingTerm::TermLit(string_cache_lookup(&mut string_cache, &literal)));
                     
                     literals.insert(literal.clone());
@@ -290,7 +336,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                         {
                             return Err(format!("@peek guards only accept plain strings"));
                         }
-                        let literal = literal[1..literal.len() - 1].replace("\\\"", "\"").replace("\\\\", "\\");
+                        let literal = literal[1..literal.len() - 1].replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n");
                         let s = string_cache_lookup(&mut string_cache, &literal);
                         matching_terms.push(MatchingTerm::Peek(n, s));
                     }
@@ -400,7 +446,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     
     let mut literals = literals.into_iter().collect::<Vec<_>>();
     literals.sort();
-    Ok(Grammar { points, by_name, literals, regexes, string_cache, bracket_pairs : Vec::new() })
+    Ok(Grammar { points, by_name, literals, regexes, string_cache, bracket_pairs, comments, comment_pairs, comment_regexes })
 }
 
 pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
@@ -462,7 +508,7 @@ pub fn tokenize(
         stacks.insert(lsc, Vec::<usize>::new());
     }
     
-    while !s.is_empty()
+    'top: while !s.is_empty()
     {
         if get_char_at_byte(s, 0).is_whitespace()
         {
@@ -471,6 +517,47 @@ pub fn tokenize(
                 s = &s[get_char_at_byte(s, 0).len_utf8()..];
             }
             if s.is_empty() { break; }
+        }
+        
+        // Pure regex comments
+        for re in &g.comment_regexes
+        {
+            if let Some(x) = re.find(s)
+            {
+                s = &s[x.len()..];
+                continue 'top;
+            }
+        }
+        // Comments with escapable newline handling
+        for c in &g.comments
+        {
+            if s.starts_with(c)
+            {
+                s = &s[c.len()..];
+                while s.len() > 0 && !s.starts_with("\n")
+                {
+                    if get_char_at_byte(s, 0) == '\\' && s.len() >= 2 { s = &s[2..]; }
+                    else { s = &s[1..]; }
+                }
+                continue 'top;
+            }
+        }
+        // Comments with nesting
+        for (l, r) in &g.comment_pairs
+        {
+            if s.starts_with(l)
+            {
+                s = &s[l.len()..];
+                let mut nest = 1;
+                while s.len() > 0 && nest > 0
+                {
+                    if s.starts_with(l) { nest += 1; }
+                    s = &s[1..];
+                    if s.starts_with(r) { nest -= 1; }
+                }
+                if s.starts_with(r) { s = &s[r.len()..]; }
+                continue 'top;
+            }
         }
         
         let mut longest = 0;
