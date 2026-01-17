@@ -1,0 +1,515 @@
+
+__COMMENTS ::= //
+__COMMENT_REGEXES ::= r`(?s)\/\*.*\*\/`r
+__BRACKET_PAIRS ::= { } | ( ) | [ ]
+__RESERVED_WORDS ::=
+    auto break case char const continue default do double else enum extern float for goto
+    if inline int long
+    register restrict return short signed sizeof static struct switch typedef union unsigned void volatile
+    while _Bool _Complex _Imaginary
+
+S ::= translation_unit
+
+declaration_specifiers ::=
+    declaration_specifier declaration_specifiers_star
+declaration_specifiers_star ::=
+    @guard(is_declaration_indicator) declaration_specifier $become declaration_specifiers_star
+    | #empty
+declaration_specifier ::=
+    @peekr(0, r`typedef|extern|static|auto|register`r) storage_class_specifier
+    | @peekr(0, r`const|restrict|volatile`r) type_qualifier
+    | @peek(0, "inline") function_specifier
+    | @guard(is_type_specifier_start) type_specifier
+
+storage_class_specifier ::=
+    @auto "typedef"
+    | @auto "extern"
+    | @auto "static"
+    | @auto "auto"
+    | "register"
+type_specifier ::=
+    @auto "void"
+    | @auto "char"
+    | @auto "short"
+    | @auto "int"
+    | @auto "long"
+    | @auto "float"
+    | @auto "double"
+    | @auto "signed"
+    | @auto "unsigned"
+    | @auto "_Bool"
+    | @auto "_Complex"
+    | @auto "_Imaginary"
+    | @auto "enum" enum_specifier
+    | @peekr(0, r`struct|union`r) struct_or_union_specifier
+    | typedef_name
+type_qualifier ::=
+    @auto "const"
+    | @auto "restrict"
+    | "volatile"
+
+struct_or_union_specifier ::=
+    struct_or_union $become struct_or_union_specifier_info
+struct_or_union_specifier_info ::=
+    @auto "{" struct_declaration_list "}"
+    | identifier $become struct_or_union_specifier_info2
+struct_or_union_specifier_info2 ::=
+    @auto "{" struct_declaration_list "}" | #empty
+
+struct_or_union ::=
+    "struct" | "union"
+struct_declaration_list ::=
+    struct_declaration $become struct_declaration_star
+struct_declaration_star ::=
+    @peek(0, "}") #empty (FOLLOW set logic)
+    | struct_declaration $become struct_declaration_star
+struct_declaration ::=
+    specifier_qualifier_list struct_declarator_list ";"
+specifier_qualifier_list ::=
+    specifier_qualifier specifier_qualifier_star
+specifier_qualifier ::=
+    @peekr(0, r`const|restrict|volatile`r) type_qualifier | type_specifier
+specifier_qualifier_star ::=
+    @peekr(0, r`const|restrict|volatile`r) type_qualifier $become specifier_qualifier_star
+    | @guard(is_type_specifier_start) type_specifier $become specifier_qualifier_star
+    | #empty
+struct_declarator_list ::=
+    struct_declarator $become struct_declarator_list_tail
+struct_declarator_list_tail ::=
+    @auto "," struct_declarator $become struct_declarator_list_tail
+    | #empty
+
+struct_declarator ::=
+    @auto ":" constant_expression
+    | declarator $become struct_declarator_declarator_tail
+struct_declarator_declarator_tail ::=
+    @auto ":" constant_expression
+    | #empty
+
+enum_specifier ::=
+    "enum" $become enum_specifier_contents
+enum_specifier_contents ::=
+    @guard(is_identifier) identifier $become enum_specifier_info_maybe
+    | $become enum_specifier_info
+enum_specifier_info_maybe ::=
+    @peek(0, "{") $become enum_specifier_info | #empty
+enum_specifier_info ::=
+    "{" enumerator_list $become enum_specifier_info2
+enum_specifier_info2 ::=
+    @auto "}"
+    | "," "}"
+
+enumerator_list ::=
+    enumerator $become enumerator_list_tail
+enumerator_list_tail ::=
+    @auto "," enumerator
+    | #empty
+enumerator ::=
+    enumeration_constant $become enumerator_value
+enumerator_value ::=
+    @auto "=" constant_expression
+    | #empty
+function_specifier ::=
+    "inline"
+
+declarator ::=
+    @peek(0, "*") pointer direct_declarator
+    | direct_declarator
+
+direct_declarator ::=
+    @auto "(" declarator ")" direct_declarator_chunk_star
+    | identifier direct_declarator_chunk_star
+
+direct_declarator_chunk_star ::=
+    @peekr(0, r`\[|\(`r) direct_declarator_chunk $become direct_declarator_chunk_star
+    | #empty
+
+direct_declarator_chunk ::=
+    @auto "[" $become direct_declarator_chunk_square
+    | "(" $become direct_declarator_chunk_paren
+    
+direct_declarator_chunk_square ::=
+    @auto "static" type_qualifier_star assignment_expression "]"
+    | @auto "*" "]"
+    | @peekr(0, r`const|restrict|volatile`r) type_qualifier_list $become direct_declarator_chunk_square3
+    | @auto "]"
+    | assignment_expression "]"
+    
+direct_declarator_chunk_square3 ::=
+    @auto "static" assignment_expression "]"
+    | @auto "*" "]"
+    | @auto "]"
+    | assignment_expression "]"
+
+direct_declarator_chunk_paren ::=
+    @auto ")"
+    | parameter_type_list ")"
+    | identifier_list ")"
+
+pointer ::=
+    pointer_info $become pointer_star
+pointer_info ::=
+    "*" type_qualifier_star
+pointer_star ::=
+    @peek(0, "*") pointer_info
+    | #empty
+
+type_qualifier_list ::=
+    type_qualifier type_qualifier_star
+type_qualifier_star ::=
+    @peekr(0, r`const|restrict|volatile`r) type_qualifier $become type_qualifier_star
+    | #empty
+
+parameter_type_list ::=
+    parameter_list $become parameter_type_list_trail
+parameter_type_list_trail ::=
+    @auto "," "..."
+    | #empty
+
+parameter_list ::=
+    parameter_declaration $become parameter_list_tail
+parameter_list_tail ::=
+    @auto "," parameter_declaration $become parameter_list_tail
+    | #empty
+parameter_declaration ::=
+    declaration_specifiers parameter_declaration_trail
+parameter_declaration_trail ::=
+    @peek(0, ")") #empty
+    | @peekr(0, r`\(|\[|\*`r) abstract_declarator
+    | declarator
+identifier_list ::=
+    identifier $become identifier_list_tail
+identifier_list_tail ::=
+    @auto "," identifier $become identifier_list_tail
+    | #empty
+type_name ::=
+    specifier_qualifier_list abstract_declarator_maybe
+abstract_declarator_maybe ::=
+    @peekr(0, r`\(|\[|\*`r) abstract_declarator
+    | #empty
+abstract_declarator ::=
+    @peek(0, "*") pointer $become direct_abstract_declarator_maybe
+    | direct_abstract_declarator
+
+direct_abstract_declarator_maybe ::=
+    @peekr(0, r`\(|\[`r) direct_abstract_declarator
+    | #empty
+
+direct_abstract_declarator ::=
+    $become direct_abstract_declarator_choice
+
+direct_abstract_declarator_choice ::=
+    @peek(0, "(") $become direct_abstract_declarator_choice2
+    | @peek(0, "[") $become direct_abstract_declarator_real
+direct_abstract_declarator_choice2 ::=
+    @peekr(1, r`\*|\(`r) $become direct_abstract_declarator_real
+    | "(" abstract_declarator ")"
+direct_abstract_declarator_real ::=
+    @auto "(" $become direct_abstract_declarator_paren_trail
+    | "[" $become direct_abstract_declarator_square_trail
+direct_abstract_declarator_paren_trail ::=
+    @auto ")" $become direct_abstract_declarator_maybe
+    | parameter_type_list ")" $become direct_abstract_declarator_maybe
+direct_abstract_declarator_square_trail ::=
+    @auto "]" $become direct_abstract_declarator_maybe
+    | "*" "]" $become direct_abstract_declarator_maybe
+    | assignment_expression "]" $become direct_abstract_declarator_maybe
+
+
+typedef_name ::=
+    identifier
+initializer ::=
+    @auto "{" initializer_list $become initializer_comma_chomp
+    | assignment_expression
+initializer_comma_chomp ::=
+    @auto "," "}"
+    | "}"
+designated_initializer ::=
+    @peekr(0, r`[\[.]`r) designation initializer
+    | initializer
+initializer_list ::=
+    designated_initializer $become initializer_list_tail
+initializer_list_tail ::=
+    @auto "," designated_initializer $become initializer_list_tail
+    | #empty
+designation ::=
+    designator_list "="
+designator_list ::=
+    designator $become designator_star
+designator_star ::=
+    @peekr(0, r`[\[.]`r) designator $become designator_star
+    | #empty
+
+designator ::=
+    @auto "[" constant_expression "]"
+    | "." identifier
+
+primary_expression ::=
+    @auto "(" expression ")"
+    | @peekr(0, r`\x22.*\x22`r) string_literal
+    | @guard(is_not_known_enumeration) identifier
+    | constant
+postfix_expression_atom ::=
+    @auto "(" type_name ")" "{" initializer_list $become initializer_comma_chomp
+    | primary_expression
+postfix_expression ::= 
+    postfix_expression_atom $become postfix_trailer_star
+
+postfix_trailer_star ::=
+    @peekr(0, r`\[|\(|\.|->|\+\+|--`r) postfix_trailer $become postfix_trailer_star
+    | #empty
+postfix_trailer ::=
+    @auto "[" expression "]"
+    | @auto "(" $become postfix_trailer_paren
+    | @auto "." identifier
+    | @auto "->" identifier
+    | @auto "++"
+    | "--"
+postfix_trailer_paren ::=
+    @auto ")"
+    | argument_expression_list ")"
+argument_expression_list ::=
+    assignment_expression $become argument_expression_list_tail
+argument_expression_list_tail ::=
+    @auto "," assignment_expression $become argument_expression_list_tail
+    | #empty
+unary_expression ::=
+    @auto "++" unary_expression
+    | @auto "--" unary_expression
+    | @peekr(0, r`[&*\+\-~!]`r) unary_operator cast_expression
+    | @auto "sizeof" $become sizeof_argument
+    | postfix_expression
+sizeof_argument ::=
+    @auto "(" type_name ")"
+    | unary_expression
+unary_operator ::=
+    r`[&*\+\-~!]`r
+cast_expression ::=
+    @guard(is_primitive_cast) "(" type_name ")" $become cast_expression
+    | unary_expression
+
+multiplicative_expression ::=
+    cast_expression $become multiplicative_expression_tail
+multiplicative_expression_tail ::=
+    @auto r`[*/%]`r cast_expression $become multiplicative_expression_tail | #empty
+
+additive_expression ::=
+    multiplicative_expression $become additive_expression_tail
+additive_expression_tail ::=
+    @auto r`[\+\-]`r multiplicative_expression $become additive_expression_tail | #empty
+
+shift_expression ::=
+    additive_expression $become shift_expression_tail
+shift_expression_tail ::=
+    @auto r`<<|>>`r additive_expression $become shift_expression_tail | #empty
+
+relational_expression ::=
+    shift_expression $become relational_expression_tail
+relational_expression_tail ::=
+    @auto r`<=|>=|<|>`r shift_expression $become relational_expression_tail | #empty
+
+equality_expression ::=
+    relational_expression $become equality_expression_tail
+equality_expression_tail ::=
+    @auto r`==|!=`r relational_expression $become equality_expression_tail | #empty
+
+AND_expression ::=
+    equality_expression $become AND_expression_tail
+AND_expression_tail ::=
+    @auto "&" equality_expression $become AND_expression_tail | #empty
+
+exclusive_OR_expression ::=
+    AND_expression $become exclusive_OR_expression_tail
+exclusive_OR_expression_tail ::=
+    @auto "^" AND_expression $become exclusive_OR_expression | #empty
+
+inclusive_OR_expression ::=
+    exclusive_OR_expression $become inclusive_OR_expression_tail
+inclusive_OR_expression_tail ::=
+    @auto "|" exclusive_OR_expression $become inclusive_OR_expression | #empty
+
+logical_AND_expression ::=
+    inclusive_OR_expression $become logical_AND_expression_tail
+logical_AND_expression_tail ::=
+    @auto "&&" inclusive_OR_expression $become logical_AND_expression | #empty
+
+logical_OR_expression ::=
+    logical_AND_expression $become logical_OR_expression_tail
+logical_OR_expression_tail ::=
+    @auto "||" logical_AND_expression $become logical_OR_expression_tail | #empty
+
+conditional_expression ::=
+    logical_OR_expression conditional_expression_tail
+conditional_expression_tail ::=
+    @auto "?" expression ":" conditional_expression | #empty
+
+# The C standard tried encoding semantics in syntax.
+# It doesn't even work. Example: ++0 = 5;
+#assignment_expression ::=
+#    conditional_expression
+#    unary_expression r`(?:\*|/|%|\+|-|<<|>>|&|\^|\|)?=`r assignment_expression
+# Slightly more permissive rule that is less incredibly awful to parse:
+assignment_expression ::=
+    conditional_expression $become assignment_expression_tail
+assignment_expression_tail ::=
+    @auto r`(?:\*|/|%|\+|-|<<|>>|&|\^|\|)?=`r conditional_expression $become assignment_expression_tail | #empty
+# I suspect this is roughly what real C compilers do and that they enforce the semantics rule afterwards.
+# For example in GCC this is a semantics error instead of a syntax error, saying that x+5 isn't a valid lvalue. Clang fails similarly:
+# int myfunc() {
+#     int* x;
+#     5+x = 3;
+# }
+# ... and using x+5 instead of 5+x gives the same error. And using ++0 (yes, really) instead of 5+x gives the same error.
+
+expression ::=
+    assignment_expression $become expression_tail
+expression_tail ::=
+    @auto "," assignment_expression $become expression_tail
+    | #empty
+
+constant_expression ::=
+    conditional_expression
+
+statement ::=
+    @guard(is_label) labeled_statement
+    | @peekr(0, r`switch|if`r) selection_statement
+    | @peekr(0, r`while|do|for`r) iteration_statement
+    | @peekr(0, r`goto|continue|break|return`r) jump_statement
+    | @peek(0, "{") compound_statement
+    | expression_statement
+labeled_statement ::=
+    @auto "case" constant_expression ":" statement
+    | @auto "default" ":" statement
+    | identifier ":" statement
+compound_statement ::=
+    "{" $become compound_statement_trail
+compound_statement_trail ::=
+    @auto "}"
+    | block_item_list "}"
+block_item_list ::=
+    block_item $become block_item_star
+block_item_star ::=
+    @peek(0, "}") #empty # FOLLOW set logic
+    | block_item $become block_item_star
+block_item ::=
+    @guard(is_declaration_indicator) declaration
+    | statement
+expression_statement ::=
+    @auto ";"
+    | expression ";"
+selection_statement ::=
+    @auto "switch" "(" expression ")" statement
+    | "if" "(" expression ")" statement $become else_maybe
+else_maybe ::=
+    @auto "else" statement
+    | #empty
+iteration_statement ::=
+    @auto "while" "(" expression ")" statement
+    | @auto "do" statement "while" "(" expression ")" ";"
+    | "for" "(" forloop_head_contents ")" statement
+forloop_head_contents ::=
+    @auto ";" $become forloop_head_contents2
+    | @guard(is_declaration_indicator) declaration $become forloop_head_contents2
+    | expression ";" $become forloop_head_contents2
+forloop_head_contents2 ::=
+    @auto ";" $become forloop_head_contents3
+    | expression ";" $become forloop_head_contents3
+forloop_head_contents3 ::=
+    @peek(0, ")") #empty # FOLLOW set logic
+    | expression
+jump_statement ::=
+    @auto "goto" identifier ";"
+    | @auto "continue" ";"
+    | @auto "break" ";"
+    | "return" $become return_operand
+return_operand ::=
+    @auto ";"
+    | expression ";"
+translation_unit ::=
+    external_declaration $become external_declaration_star
+external_declaration_star ::=
+    @eof #empty
+    | external_declaration
+
+
+declaration ::=
+    declaration_specifiers $become declaration_tail
+declaration_tail ::=
+    @auto ";"
+    | init_declarator_list ";"
+#function_definition:
+#    declaration_specifiers declarator $become function_definition_cont
+#external_declaration ::=
+#    @guard(is_funcdef) function_definition
+#    | declaration
+# UHHHH yeah it looks like this isn't how real C compilers do it and also it's insane.
+# The insanity is the arbitrarily long ambiguity until the first declarator stops.
+# Let's do something tractible instead.
+
+external_declaration ::=
+    declaration_specifiers $become extdec_chooser
+
+extdec_chooser ::=
+    @peek(0, ";") $become_as empty_declaration
+    | declarator $become extdec_declarator_choice
+empty_declaration ::= ";"
+extdec_declarator_choice ::=
+    @peekr(0, r`[=;,]`r) $become_as extdec_declaration
+    | $become_as function_definition
+extdec_declaration_init ::=
+    init_declarator $become init_declarator_list_tail 
+extdec_declaration ::=
+    @auto "," init_declarator_list ";"
+    | @auto "=" initializer extdec_declaration_init_rest
+    | ";"
+extdec_declaration_init_rest ::=
+    @auto "," init_declarator_list ";"
+    | ";"
+function_definition ::=
+    $become function_definition_cont
+
+
+
+
+init_declarator_list ::=
+    init_declarator $become init_declarator_list_tail
+init_declarator_list_tail ::=
+    @auto "," init_declarator $become init_declarator_list_tail
+    | #empty
+init_declarator ::=
+    declarator $become init_declarator_tail
+init_declarator_tail ::=
+    @auto "=" initializer
+    | #empty
+
+function_definition_cont ::=
+    @peek(0, "{") compound_statement
+    | declaration_list compound_statement
+declaration_list ::=
+    declaration $become declaration_star
+declaration_star ::=
+    declaration $become declaration_star
+    | #empty
+
+constant ::=
+    @auto r`(?x)   (?:  [1-9][0-9]*  |  0[0-7]*  |  0[xX][a-zA-Z0-9]+  )       (?:[uU](ll|LL|l|L)?|(ll|LL|l|L)([uU])?)?`r
+    | @auto r`(?x)   (?:   (?: [0-9]*\.[0-9]+ | [0-9]+\. )  (?:[eE](-|\+)?[0-9]+)?   |   [0-9]+[eE](-|\+)?[0-9]+   )   [flFL]?`r
+    | @auto r`(?x)   0[xX]  (?:  [a-zA-Z0-9]*\.[a-zA-Z0-9]+  |  [a-zA-Z0-9]+(\.)?  )  [pP](-|\+)?  [0-9]+   [flFL]?`r
+    | @auto r`(?x)   [L]?  \x27  (?:  [^\x27\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )+  \x27`r
+    | @guard(is_known_enumeration) enumeration_constant
+
+enumeration_constant ::=
+    identifier
+
+string_literal ::=
+    r`(?x)  [L]?  \x22  (?:[^\x22\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )*\x22`r
+
+identifier ::=
+    r`(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*`r
+
+
+#nondigit ::=
+#    r`[a-zA-Z_]`r
+#universal_character_name ::=
+#    r`(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})`r
+

@@ -77,6 +77,7 @@ pub enum MatchingTerm {
     TermLit(Rc<String>),
     TermRegex(RegexCacher),
     
+    Eof,
     Peek(isize, Rc<String>),
     PeekR(isize, RegexCacher),
     Guard(Rc<String>),
@@ -344,6 +345,11 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     i += 1;
                     continue;
                 }
+                if matches!(&**term_str, "@EOF" | "@eof")
+                {
+                    matching_terms.push(MatchingTerm::Eof);
+                    continue;
+                }
                 if matches!(&**term_str, "@AUTO" | "@auto")
                 {
                     matching_terms.push(MatchingTerm::_AutoTemp);
@@ -406,9 +412,9 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     matching_terms.push(MatchingTerm::Directive(MatchDirective::Become));
                     continue;
                 }
-                if matches!(&**term_str, "$BECOME" | "$become")
+                if matches!(&**term_str, "$BECOME_AS" | "$become_as")
                 {
-                    matching_terms.push(MatchingTerm::Directive(MatchDirective::Become));
+                    matching_terms.push(MatchingTerm::Directive(MatchDirective::BecomeAs));
                     continue;
                 }
                 let id = by_name.get(term_str).ok_or_else(|| format!("Not a defined grammar rule: '{term_str}' (context: '{name}')"))?;

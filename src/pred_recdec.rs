@@ -47,6 +47,7 @@ pub struct PrdGlobal<'a> {
     pub hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<ASTNode>>) -> Result<usize, String>>>,
     
     #[allow(unused)] pub udata : HashMap<std::any::TypeId, Box<dyn std::any::Any>>,
+    pub udata_r : HashMap<usize, RegexCacher>,
     
     #[allow(unused)] pub g : &'a Grammar,
 }
@@ -57,7 +58,7 @@ pub fn pred_recdec_parse_impl_recursive(
 ) -> Result<Box<ASTNode>, String>
 {
     let mut g_item = &g.points[gp_id];
-    let chosen_name = g_item.name.clone();
+    let mut chosen_name = g_item.name.clone();
     
     let mut children : Vec<Box<ASTNode>> = vec!();
     let mut i = token_start;
@@ -78,6 +79,7 @@ pub fn pred_recdec_parse_impl_recursive(
         {
             Some(MatchingTerm::Guard(guard)) =>
             {
+                accepted = false;
                 if let Some(f) = global.guards.get(&**guard)
                 {
                     let f = Rc::clone(&f);
@@ -87,6 +89,10 @@ pub fn pred_recdec_parse_impl_recursive(
                         GuardResult::HardError(e) => { Err(e)? }
                         _ => {}
                     }
+                }
+                else
+                {
+                    Err(format!("Unknown guard {guard}"))?
                 }
                 term_idx += 1;
             }
@@ -108,6 +114,11 @@ pub fn pred_recdec_parse_impl_recursive(
                 {
                     accepted = true;
                 }
+                term_idx += 1;
+            }
+            Some(MatchingTerm::Eof) =>
+            {
+                accepted = i == tokens.len();
                 term_idx += 1;
             }
             _ => {}
@@ -145,7 +156,7 @@ pub fn pred_recdec_parse_impl_recursive(
                             }
                         }
                     }
-                    let child = child?;
+                    let child = child.map_err(|e| format!("In {chosen_name}: {e}"))?;
                     i += child.token_count;
                     children.push(child);
                     matched = true;
@@ -175,12 +186,14 @@ pub fn pred_recdec_parse_impl_recursive(
                 {
                     match d
                     {
-                        MatchDirective::Become =>
+                        MatchDirective::Become | MatchDirective::BecomeAs =>
                         {
                             if let Some(MatchingTerm::Rule(id)) = alt.matching_terms.get(term_idx + 1)
                             {
                                 g_item = &g.points[*id];
+                                println!("becoming {} from {}", g_item.name, chosen_name);
                                 alt_id = 0;
+                                if matches!(d, MatchDirective::BecomeAs) { chosen_name = g_item.name.clone(); }
                                 continue 'top;
                             }
                         }
@@ -239,6 +252,7 @@ pub fn pred_recdec_force_parse(
         guards,
         hooks,
         udata : <_>::default(),
+        udata_r : <_>::default(),
         g,
     };
     
