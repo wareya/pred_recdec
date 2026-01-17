@@ -8,16 +8,17 @@ type HashMap<K, V> = std::collections::HashMap::<K, V, FxBuildHasher>;
 use crate::bnf::*;
 
 #[derive(Clone, Debug, Default)]
-pub struct PrdASTNode {
+pub struct ASTNode {
     pub text : Rc<String>,
-    pub children : Option<Vec<Box<PrdASTNode>>>,
+    pub children : Option<Vec<Box<ASTNode>>>,
     #[allow(unused)] pub token_start : usize,
     pub token_count : usize,
+    pub poisoned : bool,
 }
 
 // ASTs can be deeply recursive, so we need to avoid destroying them recursively.
 // Collect all transitive children into self.
-impl Drop for PrdASTNode {
+impl Drop for ASTNode {
     fn drop(&mut self)
     {
         if let Some(collected) = self.children.as_mut()
@@ -43,7 +44,7 @@ pub enum GuardResult {
 
 pub struct PrdGlobal<'a> {
     pub guards : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>,
-    pub hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<PrdASTNode>>) -> Result<usize, String>>>,
+    pub hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<ASTNode>>) -> Result<usize, String>>>,
     
     #[allow(unused)] pub udata : HashMap<std::any::TypeId, Box<dyn std::any::Any>>,
     
@@ -53,12 +54,12 @@ pub struct PrdGlobal<'a> {
 pub fn pred_recdec_parse_impl_recursive(
     global : &mut PrdGlobal,
     g : &Grammar, gp_id : usize, tokens : &[Token], depth : usize, token_start : usize
-) -> Result<Box<PrdASTNode>, String>
+) -> Result<Box<ASTNode>, String>
 {
     let mut g_item = &g.points[gp_id];
     let chosen_name = g_item.name.clone();
     
-    let mut children : Vec<Box<PrdASTNode>> = vec!();
+    let mut children : Vec<Box<ASTNode>> = vec!();
     let mut i = token_start;
     
     // Structured this way in preparation for future $BECOME support.
@@ -83,7 +84,7 @@ pub fn pred_recdec_parse_impl_recursive(
                     match f(global, tokens, i)
                     {
                         GuardResult::Accept => accepted = true,
-                        GuardResult::HardError(e) => { return Err(e); }
+                        GuardResult::HardError(e) => { Err(e)? }
                         _ => {}
                     }
                 }
@@ -121,7 +122,30 @@ pub fn pred_recdec_parse_impl_recursive(
             match term {
                 MatchingTerm::Rule(id) =>
                 {
-                    let child = pred_recdec_parse_impl_recursive(global, g, *id, tokens, depth + 1, i)?;
+                    let mut child = pred_recdec_parse_impl_recursive(global, g, *id, tokens, depth + 1, i);
+                    if child.is_err() && g.points[*id].recover.is_some()
+                    {
+                        if let Some((r, after)) = &g.points[*id].recover
+                        {
+                            let mut j = i + 1;
+                            while j < tokens.len() && !r.is_match(&tokens[j].text)
+                            {
+                                j += 1;
+                            }
+                            if j < tokens.len()
+                            {
+                                if *after { j += 1; }
+                                child = Ok(Box::new(ASTNode {
+                                    text : g.points[*id].name.clone(),
+                                    children : Some(vec!()),
+                                    token_start : i,
+                                    token_count : j - i,
+                                    poisoned : true,
+                                }));
+                            }
+                        }
+                    }
+                    let child = child?;
                     i += child.token_count;
                     children.push(child);
                     matched = true;
@@ -130,9 +154,9 @@ pub fn pred_recdec_parse_impl_recursive(
                 {
                     if i < tokens.len() && tokens[i].text == *lit
                     {
-                        children.push(Box::new(PrdASTNode {
+                        children.push(Box::new(ASTNode {
                             text : tokens[i].text.clone(), children : None,
-                            token_start : i, token_count : 1,
+                            token_start : i, token_count : 1, poisoned : false
                         }));
                         i += 1;
                         matched = true;
@@ -140,9 +164,9 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 MatchingTerm::TermRegex(regex) => if i < tokens.len() && regex.is_match(&tokens[i].text)
                 {
-                    children.push(Box::new(PrdASTNode {
+                    children.push(Box::new(ASTNode {
                         text : tokens[i].text.clone(), children : None,
-                        token_start : i, token_count : 1,
+                        token_start : i, token_count : 1, poisoned : false
                     }));
                     i += 1;
                     matched = true;
@@ -190,11 +214,13 @@ pub fn pred_recdec_parse_impl_recursive(
             term_idx += 1;
         }
         
-        return Ok(Box::new(PrdASTNode {
+        let poisoned = children.iter().map(|x| x.poisoned).fold(false, |a, b| a || b);
+        return Ok(Box::new(ASTNode {
             text : chosen_name,
             children : Some(children),
             token_start : token_start,
             token_count : i - token_start,
+            poisoned,
         }));
     }
     
@@ -205,8 +231,8 @@ pub fn pred_recdec_parse_impl_recursive(
 pub fn pred_recdec_force_parse(
     g : &Grammar, root_rule_name : &str, tokens : &[Token],
     guards : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>,
-    hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<PrdASTNode>>) -> Result<usize, String>>>,
-) -> Result<Box<PrdASTNode>, String>
+    hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<ASTNode>>) -> Result<usize, String>>>,
+) -> Result<Box<ASTNode>, String>
 {
     let gp_id = g.by_name.get(root_rule_name).unwrap();
     let mut global = PrdGlobal {
@@ -221,12 +247,13 @@ pub fn pred_recdec_force_parse(
 
 
 #[allow(unused)]
-pub fn print_ast_pred_recdec(ast : &PrdASTNode, indent : usize)
+pub fn print_ast_pred_recdec(ast : &ASTNode, indent : usize)
 {
     print!("{}", " ".repeat(indent));
     if let Some(c) = &ast.children
     {
-        println!("{} {{", ast.text);
+        if ast.poisoned { println!("{} (POISONED) {{", ast.text); }
+        else { println!("{} {{", ast.text); }
         for c in c
         {
             print_ast_pred_recdec(c, indent+1);

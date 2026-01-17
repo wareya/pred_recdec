@@ -58,6 +58,7 @@ pub struct GrammarPoint {
     pub name: Rc<String>,
     pub id: usize,
     pub forms: Vec<Alternation>,
+    pub recover: Option<(RegexCacher, bool)>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +68,7 @@ pub struct Alternation {
 
 #[derive(Debug, Clone)]
 pub enum MatchDirective {
-    Become, Hoist, Skip, Drop, Pruned,
+    Become, BecomeAs, Hoist, Skip, Drop, Pruned,
 }
 
 #[derive(Debug, Clone)]
@@ -298,6 +299,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
         let index = *by_name.get(name).unwrap();
         
         let mut forms = Vec::new();
+        let mut recover = None;
         
         for raw_alt in raw_forms
         {
@@ -329,6 +331,19 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     matching_terms.push(MatchingTerm::TermRegex(RegexCacher::new(re2)));
                     continue;
                 }
+                if matches!(&**term_str, "@RECOVER" | "@recover" | "@RECOVER_BEFORE" | "@recover_before") && i < raw_alt.len()
+                {
+                    let pattern = &raw_alt[i];
+                    if !pattern.starts_with("r`") || !pattern.ends_with("`r") { Err(format!("@recover guards only accept regex strings"))? }
+                    let pattern = &pattern[2..pattern.len() - 2];
+                    let pattern_all = format!("\\A{}\\z", pattern);
+                    let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
+                    // TODO: make regex cachers use interior mutability and share the cache
+                    if recover.is_some() { Err(format!("Rule {name} has multiple @recover items. Only one is supported."))? }
+                    recover = Some((RegexCacher::new(re2), matches!(&**term_str, "@RECOVER" | "@recover")));
+                    i += 1;
+                    continue;
+                }
                 if matches!(&**term_str, "@AUTO" | "@auto")
                 {
                     matching_terms.push(MatchingTerm::_AutoTemp);
@@ -336,10 +351,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 }
                 if (term_str == "@PEEK" || term_str == "@peek" || term_str == "@PEEKR" || term_str == "@peekr") && i + 4 < raw_alt.len()
                 {
-                    if raw_alt[i] != "(" || raw_alt[i+2] != "," || raw_alt[i+4] != ")"
-                    {
-                        return Err(format!("Invalid peek syntax: must be @peek(num, str)"));
-                    }
+                    if raw_alt[i] != "(" || raw_alt[i+2] != "," || raw_alt[i+4] != ")" { Err(format!("Invalid peek syntax: must be @peek(num, str)"))? }
                     let n = raw_alt[i+1].parse::<isize>().map_err(|_| format!("Not a supported peek distance: {}", raw_alt[i+1]))?;
                     if term_str == "@PEEK" || term_str == "@peek"
                     {
@@ -355,10 +367,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     else
                     {
                         let pattern = &raw_alt[i+3];
-                        if !pattern.starts_with("r`") || !pattern.ends_with("`r")
-                        {
-                            return Err(format!("@peekr guards only accept regex strings"));
-                        }
+                        if !pattern.starts_with("r`") || !pattern.ends_with("`r") { Err(format!("@peekr guards only accept regex strings"))? }
                         let pattern = &pattern[2..pattern.len() - 2];
                         let pattern_all = format!("\\A{}\\z", pattern);
                         let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
@@ -449,6 +458,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
             name: Rc::new(name.clone()),
             id: index,
             forms,
+            recover,
         });
     }
     if points.len() > 4000000000

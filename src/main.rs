@@ -104,6 +104,7 @@ expr5_tail ::=
 expr0 ::= 
     @auto "(" expr5")"
     | r`[0-9]+`r
+    | @recover_before r`[*%/]`r
 "####;
 /*
     let s = r####"
@@ -127,7 +128,7 @@ unarify ::= !hook(unary)
     //let tokens = tokenize(&mut g, &"5 * 2 * 5 * 1 * 2 * 9153");
     let tokens = tokenize(&mut g, & r#"
     <!-- ( -->
-    5 * (2 * 5) * ((1 * 2 * 9153 * 670))
+    5 * (2 * 5) * ((1 * 2 * 9153 * 670 5 5 25 * 153))
     "#);
     //let tokens = tokenize(&mut g, &"9152 6 3");
 
@@ -136,16 +137,12 @@ unarify ::= !hook(unary)
     let tokens = tokens.unwrap();
     
     let start = std::time::Instant::now();
-    //println!("{:#?}", earley_recognize(&g, "S", &tokens[..]));
-    //let ast = earley_parse(&g, "S", &tokens[..]);
-    //let ast = packrat_parse(&g, "S", &tokens[..]);
-    //let ast = brute_force_parse(&g, "S", &tokens[..]);
     
     use std::rc::Rc;
     use rustc_hash::FxBuildHasher;
     type HashMap<K, V> = std::collections::HashMap::<K, V, FxBuildHasher>;
 
-    let mut hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<PrdASTNode>>) -> Result<usize, String>>>
+    let mut hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<ASTNode>>) -> Result<usize, String>>>
         = <_>::default();
     let mut guards = HashMap::<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], _) -> GuardResult>>::default();
     
@@ -161,22 +158,23 @@ unarify ::= !hook(unary)
     ));
     
     hooks.insert("unary".to_string(),
-        Rc::new(|_global : &mut PrdGlobal, tokens : &[Token], i : usize, children : &mut Vec<Box<PrdASTNode>>|
+        Rc::new(|_global : &mut PrdGlobal, tokens : &[Token], i : usize, children : &mut Vec<Box<ASTNode>>|
         {
             if i < tokens.len() && let Ok(n) = tokens[i].text.parse::<i64>()
             {
                 for _ in 0..n
                 {
-                    children.push(Box::new(PrdASTNode {
+                    children.push(Box::new(ASTNode {
                         text : Rc::new(format!("1")),
                         children : None,
                         token_start : i,
                         token_count : 1,
+                        poisoned : false,
                     }));
                 }
                 return Ok(1);
             }
-            return Err(format!("Tried to unary-ify a non-number"));
+            Err(format!("Tried to unary-ify a non-number"))
         }
     ));
     

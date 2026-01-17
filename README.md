@@ -153,5 +153,5 @@ S {
 
 TODO:
 
-- Error recovery support-and-seek annotations (needs research on established/common techniques)
 - Write a full C99 grammar
+- $hoist, $skip, $drop, $pruned, $becomeas
