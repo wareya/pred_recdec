@@ -62,7 +62,7 @@ pub fn pred_recdec_parse_impl_recursive(
     let mut children : Vec<Box<ASTNode>> = vec!();
     let mut i = token_start;
     
-    // Structured this way in preparation for future $BECOME support.
+    // Structured this way for the sake of $become
     // 1) We can't use an iterator because then we can't go back to alternation 0.
     // 2) We can't have a "find alt" loop followed by a non-loop process block because then we can't go back to the "find alt" loop during $BECOME.
     let mut alt_id = 0;

@@ -2,6 +2,16 @@
 
 "Predicated" recursive descent parsing framework. Write 90% of your grammar in plain BNF, skip the boilerplate, and write the remaining 10% as hooks. Supports most slightly context-sensitive grammars, including typedefs. Basic lookahead and optimized "tail calls" are built in, so you don't have to add hooks for super basic LL(k) functionality, just write the peek statements. This mirrors how most high-performance parsers are written today, just in a BNF shell.
 
+Features:
+
+- BNF syntax and automatic AST contruction: keep your grammar low-boilerplate
+- Legible, easy-to-learn non-BNF parts
+- Support for dirty parsing hooks like the "typedef" hack, etc
+- Error recovery support
+- Built-in tokenizer that doesn't choke on "soft keywords"
+- Built-in comment handling, both nested and non-nested comments
+- Always perfect linear O(n) parse time unless you specifically write a worse-than-linear hook yourself
+
 This lets you write a "grammar" that has the same capabilities as a handwritten recursive descent parser. You can do computations on lookahead, skip around brackets and braces, update and query symbol tables, etc. There's no risk of or need to worry about backtracking (unless you do so yourself inside of a hook), so you can make your hooks as impure and stateful as you want. The tokenizer is non-lexing, meaning that it doesn't assign lexical identities to tokens and only performs the maximal munch step and creates a token stream, so you don't need to worry about writing a lexical grammar or avoiding lexical ambiguity; it's handled automatically based on what literals and regexes you use in the grammar.
 
 Keeping as much in BNF as possible leaves the easy 90% of your grammar in a highly maintainable format, makes it easier to change technologies or languages, and makes it much simpler to write verification or testing rigs. The way that non-BNF extensions are written in the BNF is "you can learn it by looking at examples" instead of being symbol stew.
@@ -149,6 +159,25 @@ S {
   1
  }
 }
+```
+
+Kitchen sink:
+```r
+__COMMENTS ::= //
+__COMMENT_REGEXES ::= r`(?s)<!--.*?-->`r
+__COMMENT_PAIRS ::= /* */ | {* *}
+__BRACKET_PAIRS ::= { } | ( ) | [ ]
+__RESERVED_WORDS ::= 67 | 420 | if
+
+S ::= expr5
+expr5 ::= expr0 $become expr5_tail
+expr5_tail ::=
+    @auto r`[*%/]`r expr0 $become expr5_tail
+    | #intentionally empty
+expr0 ::= 
+    @auto "(" expr5")"
+    | r`[0-9]+`r
+    | @recover_before r`[*%/]`r
 ```
 
 TODO:
