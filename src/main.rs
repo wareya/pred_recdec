@@ -99,12 +99,12 @@ __RESERVED_WORDS ::= 67 | 420 | if
 S ::= expr5
 expr5 ::= expr0 $become expr5_tail
 expr5_tail ::=
-    @auto r`[*%/]`r expr0 $become expr5_tail
+    @peekr(0, r`[*%/]`r) r`[*%/]`r expr0 $become expr5_tail
     | #intentionally empty
 expr0 ::= 
-    @auto "(" expr5")"
+    @auto "(" expr5 ")"
     | r`[0-9]+`r
-    | @recover_before r`[*%/]`r
+    | @recover r`[)]`r
 "####;
 /*
     let s = r####"
@@ -128,7 +128,7 @@ unarify ::= !hook(unary)
     //let tokens = tokenize(&mut g, &"5 * 2 * 5 * 1 * 2 * 9153");
     let tokens = tokenize(&mut g, & r#"
     <!-- ( -->
-    5 * (2 * 5) * ((1 * 2 * 9153 * 670 5 5 25 * 153))
+    5 * (2 * 5) * ((1 * 2 * 9153 * 670 5 5 25) * 153)
     "#);
     //let tokens = tokenize(&mut g, &"9152 6 3");
 

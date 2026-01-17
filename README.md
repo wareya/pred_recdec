@@ -29,7 +29,7 @@ FUNCCALL ::=
     IDENT "(" FUNCARGLIST ")"
 
 BINDING ::=
-    @peek(0, "(") "(" BINDING ")"
+    @auto "(" BINDING ")"
     | IDENT
 ```
 
@@ -38,12 +38,12 @@ Dangling else:
 S ::= statement
 statement ::= @peek(0, "if") ifcond | expr ";"
 ifcond ::= "if" expr block else_maybe
-else_maybe ::= @peek(0, "else") "else" block | #intentionally empty
+else_maybe ::= @auto "else" block | #intentionally empty
 expr ::= 
-    @peek(0, "true") "true"
-    | @peek(0, "false") "false"
+    @auto "true"
+    | @auto "false"
     | rx%[0-9]+%rx
-block ::= @peek(0, "{") "{" statement "}" | statement
+block ::= @auto "{" statement "}" | statement
 ```
 Example output for `if true if true 555; else 555;`:
 ```r
@@ -172,12 +172,12 @@ __RESERVED_WORDS ::= 67 | 420 | if
 S ::= expr5
 expr5 ::= expr0 $become expr5_tail
 expr5_tail ::=
-    @auto r`[*%/]`r expr0 $become expr5_tail
+    @peekr(0, r`[*%/]`r) r`[*%/]`r expr0 $become expr5_tail
     | #intentionally empty
 expr0 ::= 
-    @auto "(" expr5")"
+    @auto "(" expr5 ")"
     | r`[0-9]+`r
-    | @recover_before r`[*%/]`r
+    | @recover r`[)]`r
 ```
 
 TODO:
