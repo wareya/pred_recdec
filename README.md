@@ -1,6 +1,8 @@
 # Pred Recdec
 
-"Predicated" recursive descent parsing framework. Write 90% of your grammar in plain BNF, skip the boilerplate, and write the remaining 10% as hooks. Supports most slightly context-sensitive grammars, including typedefs. Basic lookahead and optimized "tail calls" are built in, so you don't have to add hooks for super basic LL(k) functionality, just write the peek statements. This mirrors how most high-performance parsers are written today, just in a BNF shell.
+Predicated recursive descent parsing framework. Write 90% of your grammar in plain BNF, skip the boilerplate, and write the remaining 10% as hooks. Supports most slightly context-sensitive grammars, including typedefs. Basic lookahead and "optimized tail calls" are built in, so you don't have to add hooks for super basic LL(k) functionality, just write the peek statements. This mirrors how most high-performance parsers are written today, just in a BNF shell.
+
+As soft proof, I wrote a working C99 grammar (src/grammar.txt). It successfully parses the preprocessor output of both gcc and clang `#include`-ing a kitchen sink worth of stdlib headers.
 
 Features:
 
@@ -11,6 +13,9 @@ Features:
 - Built-in tokenizer that doesn't choke on "soft keywords"
 - Built-in comment handling, both nested and non-nested comments
 - Always perfect linear O(n) parse time unless you specifically write a worse-than-linear hook yourself
+- Support for "optimized tail calls" and LR-like "reductions" with $become and $become_as (respectively)
+
+The last point is interesting. It makes the core BNF functionality slightly stronger than LL(k), because left factoring no longer breaks the structure of the grammar. Maybe something like "Immediate Decision Grammar".
 
 This lets you write a "grammar" that has the same capabilities as a handwritten recursive descent parser. You can do computations on lookahead, skip around brackets and braces, update and query symbol tables, etc. There's no risk of or need to worry about backtracking (unless you do so yourself inside of a hook), so you can make your hooks as impure and stateful as you want. The tokenizer is non-lexing, meaning that it doesn't assign lexical identities to tokens and only performs the maximal munch step and creates a token stream, so you don't need to worry about writing a lexical grammar or avoiding lexical ambiguity; it's handled automatically based on what literals and regexes you use in the grammar.
 
@@ -182,5 +187,4 @@ expr0 ::=
 
 TODO:
 
-- Write a full C99 grammar
-- $hoist, $skip, $drop, $pruned, $becomeas
+- $hoist, $skip, $drop, $dropifempty, $pruned
