@@ -5365,3 +5365,9 @@ int main(void) {
 
     return 0;
 }
+
+int x(int * q)
+{
+    int y[*q];
+    int g = sizeof(int [*q]);
+}

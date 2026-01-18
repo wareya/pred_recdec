@@ -116,20 +116,25 @@ direct_declarator_chunk ::=
     | "(" direct_declarator_chunk_paren
 direct_declarator_chunk_square ::=
     @auto "static" type_qualifier_star assignment_expression "]"
-    | @auto "*" "]"
     | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list direct_declarator_chunk_square3
     | @auto "]"
+    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
     | assignment_expression "]"
 direct_declarator_chunk_square3 ::=
     @auto "static" assignment_expression "]"
-    | @auto "*" "]"
     | @auto "]"
+    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
     | assignment_expression "]"
 direct_declarator_chunk_paren ::=
     @auto ")"
     | @auto "..." ")"
     | @guard(is_declaration_indicator) parameter_type_list ")"
     | identifier_list ")"
+
+# agnostic to what kind of declarator we're in
+fragment_declarator_chunk_square_ptrpart ::=
+    @peek(1, "]") "*" "]"
+    | assignment_expression "]"
 
 identifier_list ::=
     identifier $become identifier_list_tail
@@ -197,10 +202,7 @@ direct_abstract_declarator_core ::=
     | "(" direct_abstract_declarator_core_p
 direct_abstract_declarator_core_sq ::=
     @auto "]"
-    | @peek(0, "*") direct_abstract_declarator_core_sq2
-    | assignment_expression "]"
-direct_abstract_declarator_core_sq2 ::=
-    @peek(1, "]") "*" "]"
+    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
     | assignment_expression "]"
 direct_abstract_declarator_core_p ::=
     @auto ")"
@@ -231,10 +233,7 @@ NA_direct_abstract_declarator_core ::=
     | "(" NA_direct_abstract_declarator_core_p
 NA_direct_abstract_declarator_core_sq ::=
     @auto "]"
-    | @peek(0, "*") NA_direct_abstract_declarator_core_sq2
-    | assignment_expression "]"
-NA_direct_abstract_declarator_core_sq2 ::=
-    @peek(1, "]") "*" "]"
+    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
     | assignment_expression "]"
 NA_direct_abstract_declarator_core_p ::=
     @auto ")"
