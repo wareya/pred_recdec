@@ -42,11 +42,22 @@ pub enum GuardResult {
     #[allow(unused)] HardError(String)
 }
 
+
+#[derive(Default)]
+pub struct AnyMap { map: HashMap<std::any::TypeId, Box<dyn std::any::Any>> }
+
+impl AnyMap {
+    pub fn insert<T: 'static>(&mut self, value: T) { self.map.insert(std::any::TypeId::of::<T>(), Box::new(value)); }
+    pub fn get<T: 'static>(&self) -> Option<&T> { self.map.get(&std::any::TypeId::of::<T>())?.downcast_ref::<T>() }
+    pub fn get_mut<T: 'static>(&mut self) -> Option<&mut T> { self.map.get_mut(&std::any::TypeId::of::<T>())?.downcast_mut::<T>() }
+}
+
+
 pub struct PrdGlobal<'a> {
     pub guards : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>,
     pub hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<ASTNode>>) -> Result<usize, String>>>,
     
-    #[allow(unused)] pub udata : HashMap<std::any::TypeId, Box<dyn std::any::Any>>,
+    #[allow(unused)] pub udata : AnyMap,
     pub udata_r : HashMap<usize, RegexCacher>,
     
     #[allow(unused)] pub g : &'a Grammar,
@@ -62,6 +73,8 @@ pub fn pred_recdec_parse_impl_recursive(
     
     let mut children : Vec<Box<ASTNode>> = vec!();
     let mut i = token_start;
+    
+    //println!("entered {chosen_name} at {i}");
     
     // Structured this way for the sake of $become
     // 1) We can't use an iterator because then we can't go back to alternation 0.
@@ -170,7 +183,7 @@ pub fn pred_recdec_parse_impl_recursive(
                             }
                         }
                     }
-                    let child = child.map_err(|e| format!("In {chosen_name}: {e}"))?;
+                    let child = child.map_err(|e| format!("In {}: {e}", g_item.name))?;
                     i += child.token_count;
                     children.push(child);
                     matched = true;
@@ -183,6 +196,7 @@ pub fn pred_recdec_parse_impl_recursive(
                             text : tokens[i].text.clone(), children : None,
                             token_start : i, token_count : 1, poisoned : false
                         }));
+                        //println!("munched {lit} at {i}");
                         i += 1;
                         matched = true;
                     }
@@ -193,6 +207,7 @@ pub fn pred_recdec_parse_impl_recursive(
                         text : tokens[i].text.clone(), children : None,
                         token_start : i, token_count : 1, poisoned : false
                     }));
+                    //println!("munched {} at {i}", tokens[i].text);
                     i += 1;
                     matched = true;
                 }
@@ -205,11 +220,21 @@ pub fn pred_recdec_parse_impl_recursive(
                             if let Some(MatchingTerm::Rule(id)) = alt.matching_terms.get(term_idx + 1)
                             {
                                 g_item = &g.points[*id];
+                                //println!("became {} at {i}", g_item.name);
                                 //println!("becoming {} from {}", g_item.name, chosen_name);
                                 alt_id = 0;
                                 if matches!(d, MatchDirective::BecomeAs) { chosen_name = g_item.name.clone(); }
                                 continue 'top;
                             }
+                        }
+                        MatchDirective::Any => if i < tokens.len()
+                        {
+                            children.push(Box::new(ASTNode {
+                                text : tokens[i].text.clone(), children : None,
+                                token_start : i, token_count : 1, poisoned : false
+                            }));
+                            matched = true;
+                            i += 1;
                         }
                         _ => panic!("TODO: {:?}", d), // also TODO: combine into parent match once all implemented
                     }
@@ -242,6 +267,7 @@ pub fn pred_recdec_parse_impl_recursive(
         }
         
         let poisoned = children.iter().map(|x| x.poisoned).fold(false, |a, b| a || b);
+        //println!("accepted {chosen_name} from {token_start} to {i}");
         return Ok(Box::new(ASTNode {
             text : chosen_name,
             children : Some(children),
@@ -254,8 +280,20 @@ pub fn pred_recdec_parse_impl_recursive(
     Err(format!("Failed to match rule {chosen_name} at token position {token_start}"))
 }
 
+pub fn visit_mut(n : &mut ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
+{
+    let flag = f(n);
+    if flag && let Some(c) = &mut n.children
+    {
+        for c in c.iter_mut()
+        {
+            visit_mut(c, f);
+        }
+    }
+}
+
 #[allow(unused)]
-pub fn pred_recdec_force_parse(
+pub fn pred_recdec_parse(
     g : &Grammar, root_rule_name : &str, tokens : &[Token],
     guards : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>,
     hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<ASTNode>>) -> Result<usize, String>>>,
@@ -269,6 +307,12 @@ pub fn pred_recdec_force_parse(
         udata_r : <_>::default(),
         g,
     };
+    
+    if let Some(f) = global.hooks.get("init")
+    {
+        let f = Rc::clone(&f);
+        let _ = f(&mut global, tokens, 0, &mut vec!());
+    }
     
     pred_recdec_parse_impl_recursive(&mut global, g, *gp_id, tokens, 0, 0)
 }

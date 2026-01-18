@@ -68,7 +68,7 @@ pub struct Alternation {
 
 #[derive(Debug, Clone)]
 pub enum MatchDirective {
-    Become, BecomeAs, Hoist, Skip, Drop, Pruned,
+    Become, BecomeAs, Hoist, Any, Drop, Pruned,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +96,11 @@ pub fn string_cache_lookup(string_cache : &mut HashMap<String, Rc<String>>, s : 
     let rc = Rc::new(s.to_string());
     string_cache.insert(s.to_string(), Rc::clone(&rc));
     rc
+}
+#[allow(unused)]
+pub fn string_cache_lookup_immut(string_cache : &HashMap<String, Rc<String>>, s : &str) -> Rc<String>
+{
+    Rc::clone(string_cache.get(s).unwrap())
 }
 
 pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
@@ -287,7 +292,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 if name == "__COMMENT_REGEXES" && s.starts_with("r`") && s.ends_with("`r") && s.len() >= 4
                 {
                     let pattern = &s[2..s.len() - 2];
-                    let pattern = format!("\\A(?:{pattern})");
+                    let pattern = format!("\\A{pattern}");
                     let re = Regex::new(&pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
                     comment_regexes.push(re);
                 }
@@ -425,6 +430,11 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 if matches!(&**term_str, "$BECOME_AS" | "$become_as")
                 {
                     matching_terms.push(MatchingTerm::Directive(MatchDirective::BecomeAs));
+                    continue;
+                }
+                if matches!(&**term_str, "$ANY" | "$any")
+                {
+                    matching_terms.push(MatchingTerm::Directive(MatchDirective::Any));
                     continue;
                 }
                 let id = by_name.get(term_str).ok_or_else(|| format!("Not a defined grammar rule: '{term_str}' (context: '{name}')"))?;
