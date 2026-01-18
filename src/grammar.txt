@@ -218,7 +218,10 @@ NA_direct_abstract_declarator_maybe ::=
     @peekr(0, r`\(|\[`r) NA_direct_abstract_declarator
     | #empty
 NA_direct_abstract_declarator ::=
-    NA_abstract_declarator_wrapped_and_maybe direct_declarator_corelist
+    NA_abstract_declarator_wrapped_and_maybe direct_abstract_declarator_corelist
+    # non-empty identifier_list terms are forbidden outside of function definitions
+    # AND: function definitions cannot be abstract
+    # THEREFORE: it's safe to use direct_abstract_declarator_corelist instead of direct_declarator_corelist
 NA_abstract_declarator_wrapped_and_maybe ::=
     @peek(0, "(") $become NA_abstract_declarator_wrapped_and_maybe2
     | #empty
@@ -412,7 +415,7 @@ statement ::=
 
 # gcc extension
 asm_statement ::=
-    $any asm_qualifiers "(" asm_body ")"
+    r`__asm|__asm__|asm`r asm_qualifiers "(" asm_body ")"
 asm_qualifiers ::=
     @auto "volatile" $become asm_qualifiers
     | @auto "__volatile__" $become asm_qualifiers
