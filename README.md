@@ -42,7 +42,7 @@ else_maybe ::= @auto "else" block | #intentionally empty
 expr ::= 
     @auto "true"
     | @auto "false"
-    | rx%[0-9]+%rx
+    | r`[0-9]+`r
 block ::= @auto "{" statement "}" | statement
 ```
 Example output for `if true if true 555; else 555;`:
@@ -95,9 +95,9 @@ Almost Pratt parsing (without the table):
 S ::= expr5
 expr5 ::= expr0 $become expr5_tail
 expr5_tail ::=
-    @peekr(0, rx%[*%/]%rx) rx%[*%/]%rx expr0 $become expr5_tail
+    @peekr(0, r`[*%/]`r) r`[*%/]`r expr0 $become expr5_tail
     | #intentionally empty
-expr0 ::= rx%[0-9]+%rx
+expr0 ::= r`[0-9]+`r
 ```
 Example output for a `5 * 2 * 5 * 1 * 2 * 9153`:
 ```r
@@ -137,7 +137,7 @@ expr5 ::= expr0 expr5_tail
 expr5_tail ::=
     @guard(odd) expr0
     | #intentionally empty
-expr0 ::= rx%[0-9]+%rx
+expr0 ::= r`[0-9]+`r
 unarify ::= !hook(unary)
 ```
 Example output of the "custom guards/hooks" example for `9152 5 3`:
