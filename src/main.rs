@@ -231,6 +231,8 @@ fn main() {
             Ok(0)
         }
     ));
+    
+    // FIXME: URGENT: log enums too!!!!
     hooks.insert("typedefs_log".to_string(),
         Rc::new(|global : &mut PrdGlobal, tokens : &[Token], i : usize, children : &mut Vec<Box<ASTNode>>|
         {
