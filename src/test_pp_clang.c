@@ -5371,5 +5371,6 @@ int x(int * q)
 {
     int y[*q];
     int g = sizeof(int [*q]);
+    return 0;
 }
 

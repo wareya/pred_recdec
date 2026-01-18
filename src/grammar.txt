@@ -84,7 +84,7 @@ enum_specifier_info_maybe ::=
     @peek(0, "{") $become enum_specifier_info
     | #empty
 enum_specifier_info ::=
-    "{" enumerator_list "}"
+    "{" enumerator_list "}" !hook(enums_log)
 
 enumerator_list ::=
     enumerator $become enumerator_list_tail
@@ -182,19 +182,6 @@ direct_abstract_declarator_corelist ::=
     | #empty
 
 
-any_direct_declarator_core_sq ::=
-    @auto "static" type_qualifier_star assignment_expression "]"
-    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list $become any_direct_declarator_chunk_square3
-    | @auto "]"
-    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
-    | assignment_expression "]"
-any_direct_declarator_chunk_square3 ::=
-    @auto "static" assignment_expression "]"
-    | @auto "]"
-    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
-    | assignment_expression "]"
-
-
 abstract_declarator ::=
     @peek(0, "*") pointer $become direct_abstract_declarator_maybe
     | direct_abstract_declarator
@@ -230,9 +217,19 @@ NA_abstract_declarator_wrapped_and_maybe2 ::=
     | #empty
 
 
-
 # agnostic to what kind of declarator we're in
-fragment_declarator_chunk_square_ptrpart ::=
+any_direct_declarator_core_sq ::=
+    @auto "static" type_qualifier_star assignment_expression "]"
+    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list $become any_direct_declarator_chunk_square3
+    | @auto "]"
+    | @peek(0, "*") $become any_declarator_chunk_square_ptrpart
+    | assignment_expression "]"
+any_direct_declarator_chunk_square3 ::=
+    @auto "static" assignment_expression "]"
+    | @auto "]"
+    | @peek(0, "*") $become any_declarator_chunk_square_ptrpart
+    | assignment_expression "]"
+any_declarator_chunk_square_ptrpart ::=
     @peek(1, "]") "*" "]"
     | assignment_expression "]"
 

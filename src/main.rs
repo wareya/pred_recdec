@@ -19,7 +19,7 @@ fn main() {
     let tokens = tokens.unwrap();
     //let tokens = tokenize(&mut g, &"9152 6 3");
 
-    println!("{:#?}", &tokens[..tokens.len().min(10)]);
+    //println!("{:#?}", &tokens[..tokens.len().min(10)]);
     
     let start = std::time::Instant::now();
     
@@ -32,8 +32,9 @@ fn main() {
         = <_>::default();
     let mut guards = HashMap::<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], _) -> GuardResult>>::default();
     
-    type typedef_stacks = Vec<HashSet<Rc<String>>>;
-    type enum_stacks = Vec<HashSet<Rc<String>>>;
+    // FIXME: Okay using TypeId for this is actually a really bad idea, change it to ints.
+    type TypedefStack = Vec<HashSet<Rc<String>>>;
+    type EnumStack = Vec<HashSet<(Rc<String>,)>>;
     
     let type_specifier_checker : Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>
         = Rc::new(|global : &mut PrdGlobal, tokens : &[Token], i : usize|
@@ -46,16 +47,16 @@ fn main() {
             ).unwrap()));
             if r.is_match(n)
             {
-                println!("!!!! accepting {n} as a type indicator");
+                //println!("!!!! accepting {n} as a type indicator");
                 return GuardResult::Accept;
             }
-            if let Some(stacks) = global.udata.get::<typedef_stacks>()
+            if let Some(stack) = global.udata.get::<TypedefStack>()
             {
-                for s in stacks
+                for s in stack
                 {
                     if s.contains(n)
                     {
-                        println!("!!!! accepting {n} as a typedef (type specifier)");
+                        //println!("!!!! accepting {n} as a typedef (type specifier)");
                         return GuardResult::Accept;
                     }
                 }
@@ -80,16 +81,16 @@ fn main() {
                 ).unwrap()));
                 if r.is_match(n)
                 {
-                    println!("!!!! accepting {n} as a declaration indicator");
+                    //println!("!!!! accepting {n} as a declaration indicator");
                     return GuardResult::Accept;
                 }
-                if let Some(stacks) = global.udata.get::<typedef_stacks>()
+                if let Some(stack) = global.udata.get::<TypedefStack>()
                 {
-                    for s in stacks
+                    for s in stack
                     {
                         if s.contains(n)
                         {
-                            println!("!!!! accepting {n} as a typedef");
+                            //println!("!!!! accepting {n} as a typedef");
                             return GuardResult::Accept;
                         }
                     }
@@ -158,11 +159,11 @@ fn main() {
                 ).unwrap()));
                 if r.is_match(n)
                 {
-                    let mut stacks = global.udata.get_mut::<typedef_stacks>();
-                    let stacks = stacks.as_mut().unwrap();
-                    for s in stacks.iter()
+                    let mut stack = global.udata.get_mut::<EnumStack>();
+                    let stack = stack.as_mut().unwrap();
+                    for s in stack.iter()
                     {
-                        if s.contains(n)
+                        if s.contains(&(Rc::clone(n),))
                         {
                             return GuardResult::Reject;
                         }
@@ -180,11 +181,11 @@ fn main() {
             if i < tokens.len()
             {
                 let n = &tokens[i].text;
-                let mut stacks = global.udata.get_mut::<typedef_stacks>();
-                let stacks = stacks.as_mut().unwrap();
-                for s in stacks.iter()
+                let mut stack = global.udata.get_mut::<EnumStack>();
+                let stack = stack.as_mut().unwrap();
+                for s in stack.iter()
                 {
-                    if s.contains(n)
+                    if s.contains(&(Rc::clone(n),))
                     {
                         return GuardResult::Accept;
                     }
@@ -197,8 +198,8 @@ fn main() {
     hooks.insert("init".to_string(),
         Rc::new(|global : &mut PrdGlobal, _tokens : &[Token], _i : usize, _children : &mut Vec<Box<ASTNode>>|
         {
-            let mut s = typedef_stacks::new();
-            let mut s2 = enum_stacks::new();
+            let mut s = TypedefStack::new();
+            let mut s2 = EnumStack::new();
             s.push(<_>::default());
             s2.push(<_>::default());
             global.udata.insert(s);
@@ -210,24 +211,24 @@ fn main() {
     hooks.insert("typedef_stack_push".to_string(),
         Rc::new(|global : &mut PrdGlobal, tokens : &[Token], i : usize, children : &mut Vec<Box<ASTNode>>|
         {
-            let mut stacks = global.udata.get_mut::<typedef_stacks>();
-            let stacks = stacks.as_mut().unwrap();
-            stacks.push(<_>::default());
-            let mut stacks = global.udata.get_mut::<enum_stacks>();
-            let stacks = stacks.as_mut().unwrap();
-            stacks.push(<_>::default());
+            let mut stack = global.udata.get_mut::<TypedefStack>();
+            let stack = stack.as_mut().unwrap();
+            stack.push(<_>::default());
+            let mut stack = global.udata.get_mut::<EnumStack>();
+            let stack = stack.as_mut().unwrap();
+            stack.push(<_>::default());
             Ok(0)
         }
     ));
     hooks.insert("typedef_stack_pop".to_string(),
         Rc::new(|global : &mut PrdGlobal, tokens : &[Token], i : usize, children : &mut Vec<Box<ASTNode>>|
         {
-            let mut stacks = global.udata.get_mut::<typedef_stacks>();
-            let stacks = stacks.as_mut().unwrap();
-            stacks.pop();
-            let mut stacks = global.udata.get_mut::<enum_stacks>();
-            let stacks = stacks.as_mut().unwrap();
-            stacks.pop();
+            let mut stack = global.udata.get_mut::<TypedefStack>();
+            let stack = stack.as_mut().unwrap();
+            stack.pop();
+            let mut stack = global.udata.get_mut::<EnumStack>();
+            let stack = stack.as_mut().unwrap();
+            stack.pop();
             Ok(0)
         }
     ));
@@ -236,9 +237,9 @@ fn main() {
     hooks.insert("typedefs_log".to_string(),
         Rc::new(|global : &mut PrdGlobal, tokens : &[Token], i : usize, children : &mut Vec<Box<ASTNode>>|
         {
-            let mut stacks = global.udata.get_mut::<typedef_stacks>();
-            let stacks = stacks.as_mut().unwrap();
-            if let Some(s) = stacks.last_mut()
+            let mut stack = global.udata.get_mut::<TypedefStack>();
+            let stack = stack.as_mut().unwrap();
+            if let Some(s) = stack.last_mut()
             {
                 let mut found = false;
                 let mut f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
@@ -273,6 +274,32 @@ fn main() {
             Ok(0)
         }
     ));
+    hooks.insert("enums_log".to_string(),
+        Rc::new(|global : &mut PrdGlobal, tokens : &[Token], i : usize, children : &mut Vec<Box<ASTNode>>|
+        {
+            println!("----");
+            let mut stack = global.udata.get_mut::<EnumStack>();
+            let stack = stack.as_mut().unwrap();
+            if let Some(s) = stack.last_mut()
+            {
+                let mut f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
+                {
+                    if c.children.is_some() && *c.text == "enumeration_constant" && c.children.is_some()
+                    {
+                        s.insert((Rc::clone(&c.children.as_ref().unwrap()[0].children.as_ref().unwrap()[0].text),));
+                    }
+                    true
+                };
+                
+                for c in children.iter_mut()
+                {
+                    visit_mut(c, &mut f);
+                }
+            }
+            //println!("-------");
+            Ok(0)
+        }
+    ));
     
     hooks.insert("many_balanced".to_string(),
         Rc::new(|global : &mut PrdGlobal, tokens : &[Token], mut i : usize, children : &mut Vec<Box<ASTNode>>|
@@ -301,8 +328,5 @@ fn main() {
     println!("Time taken: {:?} under {} items", start.elapsed(), tokens.len());
     //let ast = ast.unwrap();
     //println!("{:#?} {} {} {} {}", ast, ast.text, ast.children.as_ref().unwrap().len(), ast.token_start, ast.token_count);
-    //print_ast_earley(&ast.unwrap(), 0);
-    //print_ast_packrat(&ast.unwrap(), 0);
-    //print_ast_brute_force(&ast.unwrap(), 0);
-    print_ast_pred_recdec(&ast.unwrap(), 0);
+    //print_ast_pred_recdec(&ast.unwrap(), 0);
 }

@@ -548,9 +548,9 @@ pub fn tokenize(
     
     'top: while !s.is_empty()
     {
-        if get_char_at_byte(s, 0).is_whitespace()
+        if get_char_at_byte(s, 0).is_ascii_whitespace()
         {
-            while !s.is_empty() && get_char_at_byte(s, 0).is_whitespace()
+            while !s.is_empty() && get_char_at_byte(s, 0).is_ascii_whitespace()
             {
                 s = &s[get_char_at_byte(s, 0).len_utf8()..];
             }
@@ -572,10 +572,16 @@ pub fn tokenize(
             if s.starts_with(c)
             {
                 s = &s[c.len()..];
-                while s.len() > 0 && !s.starts_with("\n")
+                while s.len() > 0 && get_char_at_byte(s, 0) != '\n'
                 {
-                    if get_char_at_byte(s, 0) == '\\' && s.len() >= 2 { s = &s[2..]; }
-                    else { s = &s[1..]; }
+                    if get_char_at_byte(s, 0) == '\\'
+                    {
+                        s = &s[get_char_at_byte(s, 0).len_utf8()..]; // extra skip
+                    }
+                    if c.len() > 0
+                    {
+                        s = &s[get_char_at_byte(s, 0).len_utf8()..];
+                    }
                 }
                 continue 'top;
             }
@@ -590,7 +596,7 @@ pub fn tokenize(
                 while s.len() > 0 && nest > 0
                 {
                     if s.starts_with(l) { nest += 1; }
-                    s = &s[1..];
+                    s = &s[get_char_at_byte(s, 0).len_utf8()..];
                     if s.starts_with(r) { nest -= 1; }
                 }
                 if s.starts_with(r) { s = &s[r.len()..]; }
