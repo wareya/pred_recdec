@@ -102,40 +102,6 @@ enumerator_value ::=
 function_specifier ::=
     @auto "inline" | @auto "__inline__" | "__inline"
 
-declarator ::=
-    @peek(0, "*") pointer direct_declarator attribute_list
-    | direct_declarator attribute_list
-direct_declarator ::=
-    @auto "(" attribute_list declarator ")" direct_declarator_chunk_star
-    | attribute_list identifier direct_declarator_chunk_star
-direct_declarator_chunk_star ::=
-    @peekr(0, r`\[|\(`r) direct_declarator_chunk direct_declarator_chunk_star
-    | #empty
-direct_declarator_chunk ::=
-    @auto "[" direct_declarator_chunk_square
-    | "(" direct_declarator_chunk_paren
-direct_declarator_chunk_square ::=
-    @auto "static" type_qualifier_star assignment_expression "]"
-    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list $become direct_declarator_chunk_square3
-    | @auto "]"
-    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
-    | assignment_expression "]"
-direct_declarator_chunk_square3 ::=
-    @auto "static" assignment_expression "]"
-    | @auto "]"
-    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
-    | assignment_expression "]"
-direct_declarator_chunk_paren ::=
-    @auto ")"
-    | @auto "..." ")"
-    | @guard(is_declaration_indicator) parameter_type_list ")"
-    | identifier_list ")"
-
-# agnostic to what kind of declarator we're in
-fragment_declarator_chunk_square_ptrpart ::=
-    @peek(1, "]") "*" "]"
-    | assignment_expression "]"
-
 identifier_list ::=
     identifier $become identifier_list_tail
 identifier_list_tail ::=
@@ -183,6 +149,52 @@ abstract_declarator_maybe ::=
     | #empty
 
 
+
+declarator ::=
+    @peek(0, "*") pointer direct_declarator attribute_list
+    | direct_declarator attribute_list
+direct_declarator ::=
+    @auto "(" attribute_list declarator ")" direct_declarator_corelist
+    | attribute_list identifier direct_declarator_corelist
+
+direct_declarator_core ::=
+    @auto "[" any_direct_declarator_core_sq
+    | "(" direct_declarator_core_p
+direct_declarator_core_p ::=
+    @auto ")"
+    | @auto "..." ")"
+    | @guard(is_declaration_indicator) parameter_type_list ")"
+    | identifier_list ")" # Blame this rule specifically for concrete and abstract declarators not being merged.
+direct_declarator_corelist ::=
+    @peekr(0, r`\[|\(`r) direct_declarator_core direct_declarator_corelist
+    | #empty
+
+direct_abstract_declarator_core ::=
+    @auto "[" any_direct_declarator_core_sq
+    | "(" direct_abstract_declarator_core_p
+direct_abstract_declarator_core_p ::=
+    @auto ")"
+    | @auto "..." ")"
+    | @guard(is_declaration_indicator) parameter_type_list ")"
+    # Note the lack of identifier_list rule.
+direct_abstract_declarator_corelist ::=
+    @peekr(0, r`\[|\(`r) direct_abstract_declarator_core direct_abstract_declarator_corelist
+    | #empty
+
+
+any_direct_declarator_core_sq ::=
+    @auto "static" type_qualifier_star assignment_expression "]"
+    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list $become any_direct_declarator_chunk_square3
+    | @auto "]"
+    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
+    | assignment_expression "]"
+any_direct_declarator_chunk_square3 ::=
+    @auto "static" assignment_expression "]"
+    | @auto "]"
+    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
+    | assignment_expression "]"
+
+
 abstract_declarator ::=
     @peek(0, "*") pointer $become direct_abstract_declarator_maybe
     | direct_abstract_declarator
@@ -197,31 +209,8 @@ abstract_declarator_wrapped_and_maybe ::=
 abstract_declarator_wrapped_and_maybe2 ::=
     @peekr(1, r`\*|\(|\[`r) "(" attribute_list abstract_declarator ")"
     | #empty
-direct_abstract_declarator_core ::=
-    @auto "[" direct_abstract_declarator_core_sq
-    | "(" direct_abstract_declarator_core_p
-direct_abstract_declarator_core_sq ::=
-    @auto "static" type_qualifier_star assignment_expression "]"
-    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list $become direct_abstract_declarator_chunk_square3
-    | @auto "]"
-    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
-    | assignment_expression "]"
-direct_abstract_declarator_chunk_square3 ::=
-    @auto "static" assignment_expression "]"
-    | @auto "]"
-    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
-    | assignment_expression "]"
-direct_abstract_declarator_core_p ::=
-    @auto ")"
-    | @auto "..." ")"
-    | parameter_type_list ")"
-direct_abstract_declarator_corelist ::=
-    @peekr(0, r`\(|\[`r) direct_abstract_declarator_core $become direct_abstract_declarator_corelist
-    | #empty
 
-    
 # "name allowed" variants
-# FIXME: do this based on declarator instead of abstract declarator
 NA_abstract_declarator ::=
     @peek(0, "*") pointer identifier_maybe NA_direct_abstract_declarator_maybe
     | identifier_maybe NA_direct_abstract_declarator
@@ -229,34 +218,22 @@ NA_direct_abstract_declarator_maybe ::=
     @peekr(0, r`\(|\[`r) NA_direct_abstract_declarator
     | #empty
 NA_direct_abstract_declarator ::=
-    NA_abstract_declarator_wrapped_and_maybe NA_direct_abstract_declarator_corelist
+    NA_abstract_declarator_wrapped_and_maybe direct_declarator_corelist
 NA_abstract_declarator_wrapped_and_maybe ::=
     @peek(0, "(") $become NA_abstract_declarator_wrapped_and_maybe2
     | #empty
 NA_abstract_declarator_wrapped_and_maybe2 ::=
     @peekr(1, r`\*|\(|\[`r) "(" attribute_list NA_abstract_declarator ")"
     | #empty
-NA_direct_abstract_declarator_core ::=
-    @auto "[" NA_direct_abstract_declarator_core_sq
-    | "(" NA_direct_abstract_declarator_core_p
-NA_direct_abstract_declarator_core_sq ::=
-    @auto "static" type_qualifier_star assignment_expression "]"
-    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list $become NA_direct_abstract_declarator_chunk_square3
-    | @auto "]"
-    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
+
+
+
+# agnostic to what kind of declarator we're in
+fragment_declarator_chunk_square_ptrpart ::=
+    @peek(1, "]") "*" "]"
     | assignment_expression "]"
-NA_direct_abstract_declarator_chunk_square3 ::=
-    @auto "static" assignment_expression "]"
-    | @auto "]"
-    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
-    | assignment_expression "]"
-NA_direct_abstract_declarator_core_p ::=
-    @auto ")"
-    | @auto "..." ")"
-    | parameter_type_list ")"
-NA_direct_abstract_declarator_corelist ::=
-    @peekr(0, r`\(|\[`r) NA_direct_abstract_declarator_core $become NA_direct_abstract_declarator_corelist
-    | #empty
+
+
 
 typedef_name ::=
     identifier
