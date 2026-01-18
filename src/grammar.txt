@@ -7,7 +7,7 @@ __RESERVED_WORDS ::=
     auto break case char const continue default do double else enum extern float for goto
     if inline __inline__ __inline int long
     register restrict __restrict__ return short signed sizeof static struct switch typedef union unsigned void volatile
-    while _Bool _Complex _Imaginary
+    while _Bool _Complex
 
 S ::= translation_unit
 
@@ -30,7 +30,7 @@ attribute_list ::=
 storage_class_specifier ::=
     @auto r`typedef|extern|static|__extension__|auto|register`r
 type_specifier ::=
-    @auto r`void|char|short|int|__builtin_va_list|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary`r
+    @auto r`void|char|short|int|__builtin_va_list|long|float|double|signed|unsigned|_Bool|_Complex`r
     | @peek(0, "enum") enum_specifier
     | @peekr(0, r`struct|union`r) struct_or_union_specifier
     | typedef_name
@@ -116,7 +116,7 @@ direct_declarator_chunk ::=
     | "(" direct_declarator_chunk_paren
 direct_declarator_chunk_square ::=
     @auto "static" type_qualifier_star assignment_expression "]"
-    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list direct_declarator_chunk_square3
+    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list $become direct_declarator_chunk_square3
     | @auto "]"
     | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
     | assignment_expression "]"
@@ -184,7 +184,7 @@ abstract_declarator_maybe ::=
 
 
 abstract_declarator ::=
-    @peek(0, "*") pointer direct_abstract_declarator_maybe
+    @peek(0, "*") pointer $become direct_abstract_declarator_maybe
     | direct_abstract_declarator
 direct_abstract_declarator_maybe ::=
     @peekr(0, r`\(|\[`r) direct_abstract_declarator
@@ -201,7 +201,14 @@ direct_abstract_declarator_core ::=
     @auto "[" direct_abstract_declarator_core_sq
     | "(" direct_abstract_declarator_core_p
 direct_abstract_declarator_core_sq ::=
-    @auto "]"
+    @auto "static" type_qualifier_star assignment_expression "]"
+    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list $become direct_abstract_declarator_chunk_square3
+    | @auto "]"
+    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
+    | assignment_expression "]"
+direct_abstract_declarator_chunk_square3 ::=
+    @auto "static" assignment_expression "]"
+    | @auto "]"
     | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
     | assignment_expression "]"
 direct_abstract_declarator_core_p ::=
@@ -212,6 +219,7 @@ direct_abstract_declarator_corelist ::=
     @peekr(0, r`\(|\[`r) direct_abstract_declarator_core $become direct_abstract_declarator_corelist
     | #empty
 
+    
 # "name allowed" variants
 # FIXME: do this based on declarator instead of abstract declarator
 NA_abstract_declarator ::=
@@ -232,7 +240,14 @@ NA_direct_abstract_declarator_core ::=
     @auto "[" NA_direct_abstract_declarator_core_sq
     | "(" NA_direct_abstract_declarator_core_p
 NA_direct_abstract_declarator_core_sq ::=
-    @auto "]"
+    @auto "static" type_qualifier_star assignment_expression "]"
+    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier_list $become NA_direct_abstract_declarator_chunk_square3
+    | @auto "]"
+    | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
+    | assignment_expression "]"
+NA_direct_abstract_declarator_chunk_square3 ::=
+    @auto "static" assignment_expression "]"
+    | @auto "]"
     | @peek(0, "*") $become fragment_declarator_chunk_square_ptrpart
     | assignment_expression "]"
 NA_direct_abstract_declarator_core_p ::=

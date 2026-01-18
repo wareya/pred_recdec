@@ -42,7 +42,7 @@ fn main() {
         {
             let n = &tokens[i].text;
             let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(regex::Regex::new(
-                r#"(?x)\A(?:void|__attribute__|__extension__|__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|enum|struct|union)\z"#
+                r#"(?x)\A(?:void|__attribute__|__extension__|__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|enum|struct|union)\z"#
             ).unwrap()));
             if r.is_match(n)
             {
@@ -76,7 +76,7 @@ fn main() {
                 let n = &tokens[i].text;
                 let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new(regex::Regex::new(
                     r#"(?x)\A(?:typedef|extern|__attribute__|__extension__|__builtin_va_list|static|auto|register|const|restrict|__restrict__|volatile|__volatile__|__inline__|__inline|inline|void|char|short
-                    |int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|enum|struct|union)\z"#
+                    |int|long|float|double|signed|unsigned|_Bool|_Complex|enum|struct|union)\z"#
                 ).unwrap()));
                 if r.is_match(n)
                 {
