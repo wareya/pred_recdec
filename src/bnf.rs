@@ -80,6 +80,7 @@ pub enum MatchingTerm {
     Eof,
     Peek(isize, Rc<String>),
     PeekR(isize, RegexCacher),
+    PeekRes(isize, RegexCacher),
     Guard(Rc<String>),
     Hook(Rc<String>),
     Directive(MatchDirective),
@@ -286,7 +287,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 if name == "__COMMENT_REGEXES" && s.starts_with("r`") && s.ends_with("`r") && s.len() >= 4
                 {
                     let pattern = &s[2..s.len() - 2];
-                    let pattern = format!("\\A{pattern}");
+                    let pattern = format!("\\A(?:{pattern})");
                     let re = Regex::new(&pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
                     comment_regexes.push(re);
                 }
@@ -304,7 +305,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
         
         for raw_alt in raw_forms
         {
-            println!("{:?}", raw_alt);
+            //println!("{:?}", raw_alt);
             let mut matching_terms = Vec::new();
             
             let mut i = 0;
@@ -324,8 +325,8 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 if term_str.starts_with("r`") && term_str.ends_with("`r") && term_str.len() >= 4
                 {
                     let pattern = &term_str[2..term_str.len() - 2];
-                    let pattern_all = format!("\\A{pattern}\\z"); // full match (for parsing)
-                    let pattern = format!("\\A{pattern}"); // at start (for tokenization)
+                    let pattern_all = format!("\\A(?:{pattern})\\z"); // full match (for parsing)
+                    let pattern = format!("\\A(?:{pattern})"); // at start (for tokenization)
                     let re = Regex::new(&pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
                     regexes.push(re.clone());
                     let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
@@ -337,7 +338,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     let pattern = &raw_alt[i];
                     if !pattern.starts_with("r`") || !pattern.ends_with("`r") { Err(format!("@recover guards only accept regex strings"))? }
                     let pattern = &pattern[2..pattern.len() - 2];
-                    let pattern_all = format!("\\A{}\\z", pattern);
+                    let pattern_all = format!("\\A(?:{})\\z", pattern);
                     let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                     // TODO: make regex cachers use interior mutability and share the cache
                     if recover.is_some() { Err(format!("Rule {name} has multiple @recover items. Only one is supported."))? }
@@ -355,7 +356,9 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     matching_terms.push(MatchingTerm::_AutoTemp);
                     continue;
                 }
-                if (term_str == "@PEEK" || term_str == "@peek" || term_str == "@PEEKR" || term_str == "@peekr") && i + 4 < raw_alt.len()
+                if (term_str == "@PEEK" || term_str == "@peek"
+                    || term_str == "@PEEKR" || term_str == "@peekr"
+                    || term_str == "@PEEKRES" || term_str == "@peekres") && i + 4 < raw_alt.len()
                 {
                     if raw_alt[i] != "(" || raw_alt[i+2] != "," || raw_alt[i+4] != ")" { Err(format!("Invalid peek syntax: must be @peek(num, str)"))? }
                     let n = raw_alt[i+1].parse::<isize>().map_err(|_| format!("Not a supported peek distance: {}", raw_alt[i+1]))?;
@@ -375,10 +378,17 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                         let pattern = &raw_alt[i+3];
                         if !pattern.starts_with("r`") || !pattern.ends_with("`r") { Err(format!("@peekr guards only accept regex strings"))? }
                         let pattern = &pattern[2..pattern.len() - 2];
-                        let pattern_all = format!("\\A{}\\z", pattern);
+                        let pattern_all = format!("\\A(?:{})\\z", pattern);
                         let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                         // TODO: make regex cachers use interior mutability and share the cache
-                        matching_terms.push(MatchingTerm::PeekR(n, RegexCacher::new(re2)));
+                        if term_str == "@PEEK" || term_str == "@peek"
+                        {
+                            matching_terms.push(MatchingTerm::PeekRes(n, RegexCacher::new(re2)));
+                        }
+                        else
+                        {
+                            matching_terms.push(MatchingTerm::PeekR(n, RegexCacher::new(re2)));
+                        }
                     }
                     i += 5;
                     continue;
@@ -456,7 +466,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 break;
             }
             if !(if let Some(x) = f.matching_terms.get(0) // early 2026: working around not-yet-supported syntax
-                && matches!(x, MatchingTerm::Peek(_, _) | MatchingTerm::PeekR(_, _) |MatchingTerm::Guard(_)) { true } else { false })
+                && matches!(x, MatchingTerm::Peek(_, _) | MatchingTerm::PeekR(_, _) | MatchingTerm::Guard(_) | MatchingTerm::Eof) { true } else { false })
             { num_nonguards += 1; }
         }
         points.push(GrammarPoint
@@ -491,7 +501,7 @@ pub struct Token {
 // Sort literals from grammar by length and combine them into a single match-longest regex.
 pub fn build_literal_regex(literals : &Vec<String>, terminated : bool) -> Regex
 {
-    let mut text_token_regex_s = "\\A(".to_string();
+    let mut text_token_regex_s = "\\A(?:".to_string();
     
     let mut lits = literals.clone();
     lits.sort_by(|a, b| b.len().cmp(&a.len()));
@@ -591,11 +601,7 @@ pub fn tokenize(
         {
             if let Some(loc) = r.find(s).map(|x| x.len())
             {
-                if let Some(r) = &g.reserved
-                {
-                    if !r.is_match(&s[..loc]) { longest = longest.max(loc); }
-                }
-                else { longest = longest.max(loc); }
+                longest = longest.max(loc);
             }
         }
         if let Some(loc) = all_literals_regex.find(s).map(|x| x.len())

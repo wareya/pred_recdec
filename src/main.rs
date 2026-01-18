@@ -102,7 +102,7 @@ unarify ::= !hook(unary)
 "####;
 */
     let mut g = bnf_to_grammar(&s).unwrap();
-    println!("{:#?}", &g);
+    //println!("{:#?}", &g);
     
     //let tokens = tokenize(&mut g, &"a a a a a a a a a a   \n".repeat(10000));
     //let tokens = tokenize(&mut g, &"if 1 then if 325 then 1953 else 15\n");

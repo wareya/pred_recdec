@@ -116,6 +116,20 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 term_idx += 1;
             }
+            Some(MatchingTerm::PeekRes(loc, tester)) =>
+            {
+                accepted = false;
+                let loc = (i as isize + loc) as usize;
+                if loc < tokens.len() && tester.is_match(&tokens[loc].text)
+                {
+                    accepted = true;
+                    if let Some(r) = &g.reserved
+                    {
+                        if r.is_match(&tokens[loc].text) { accepted = false; }
+                    }
+                }
+                term_idx += 1;
+            }
             Some(MatchingTerm::Eof) =>
             {
                 accepted = i == tokens.len();
@@ -191,7 +205,7 @@ pub fn pred_recdec_parse_impl_recursive(
                             if let Some(MatchingTerm::Rule(id)) = alt.matching_terms.get(term_idx + 1)
                             {
                                 g_item = &g.points[*id];
-                                println!("becoming {} from {}", g_item.name, chosen_name);
+                                //println!("becoming {} from {}", g_item.name, chosen_name);
                                 alt_id = 0;
                                 if matches!(d, MatchDirective::BecomeAs) { chosen_name = g_item.name.clone(); }
                                 continue 'top;

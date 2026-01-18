@@ -1,7 +1,8 @@
 
 __COMMENTS ::= //
-__COMMENT_REGEXES ::= r`(?s)\/\*.*\*\/`r
+__COMMENT_REGEXES ::= r`(?s)\/\*.*?\*\/`r
 __BRACKET_PAIRS ::= { } | ( ) | [ ]
+# only used by the peekres command (not peekr, not regex terminals)
 __RESERVED_WORDS ::=
     auto break case char const continue default do double else enum extern float for goto
     if inline int long
@@ -22,31 +23,14 @@ declaration_specifier ::=
     | @guard(is_type_specifier_start) type_specifier
 
 storage_class_specifier ::=
-    @auto "typedef"
-    | @auto "extern"
-    | @auto "static"
-    | @auto "auto"
-    | "register"
+    @auto r`typedef|extern|static|auto|register`r
 type_specifier ::=
-    @auto "void"
-    | @auto "char"
-    | @auto "short"
-    | @auto "int"
-    | @auto "long"
-    | @auto "float"
-    | @auto "double"
-    | @auto "signed"
-    | @auto "unsigned"
-    | @auto "_Bool"
-    | @auto "_Complex"
-    | @auto "_Imaginary"
+    @auto r`void|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary`r
     | @auto "enum" enum_specifier
     | @peekr(0, r`struct|union`r) struct_or_union_specifier
     | typedef_name
 type_qualifier ::=
-    @auto "const"
-    | @auto "restrict"
-    | "volatile"
+    @auto r`const|restrict|volatile`r
 
 struct_or_union_specifier ::=
     struct_or_union $become struct_or_union_specifier_info
@@ -57,7 +41,7 @@ struct_or_union_specifier_info2 ::=
     @auto "{" struct_declaration_list "}" | #empty
 
 struct_or_union ::=
-    "struct" | "union"
+    @auto "struct" | "union"
 struct_declaration_list ::=
     struct_declaration $become struct_declaration_star
 struct_declaration_star ::=
@@ -143,7 +127,7 @@ direct_declarator_chunk_square3 ::=
 
 direct_declarator_chunk_paren ::=
     @auto ")"
-    | parameter_type_list ")"
+    | @guard(is_declaration_indicator) parameter_type_list ")"
     | identifier_list ")"
 
 pointer ::=
@@ -169,7 +153,8 @@ parameter_type_list_trail ::=
 parameter_list ::=
     parameter_declaration $become parameter_list_tail
 parameter_list_tail ::=
-    @auto "," parameter_declaration $become parameter_list_tail
+    @peek(1, "...") #empty
+    | @auto "," parameter_declaration $become parameter_list_tail
     | #empty
 parameter_declaration ::=
     declaration_specifiers parameter_declaration_trail
@@ -212,7 +197,7 @@ direct_abstract_declarator_paren_trail ::=
     | parameter_type_list ")" $become direct_abstract_declarator_maybe
 direct_abstract_declarator_square_trail ::=
     @auto "]" $become direct_abstract_declarator_maybe
-    | "*" "]" $become direct_abstract_declarator_maybe
+    | @auto "*" "]" $become direct_abstract_declarator_maybe
     | assignment_expression "]" $become direct_abstract_declarator_maybe
 
 
@@ -344,7 +329,7 @@ conditional_expression_tail ::=
     @auto "?" expression ":" conditional_expression | #empty
 
 # The C standard tried encoding semantics in syntax.
-# It doesn't even work. Example: ++0 = 5;
+# It doesn't even work. Examples: ++x = 5; and (x + 3) = 5;
 #assignment_expression ::=
 #    conditional_expression
 #    unary_expression r`(?:\*|/|%|\+|-|<<|>>|&|\^|\|)?=`r assignment_expression
@@ -483,12 +468,9 @@ init_declarator_tail ::=
     | #empty
 
 function_definition_cont ::=
-    @peek(0, "{") compound_statement
-    | declaration_list compound_statement
-declaration_list ::=
-    declaration $become declaration_star
-declaration_star ::=
-    declaration $become declaration_star
+    func_knr_declaration_star compound_statement
+func_knr_declaration_star ::=
+    @peekr(0, r`[^{]`r) declaration $become func_knr_declaration_star
     | #empty
 
 constant ::=
@@ -506,10 +488,3 @@ string_literal ::=
 
 identifier ::=
     r`(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*`r
-
-
-#nondigit ::=
-#    r`[a-zA-Z_]`r
-#universal_character_name ::=
-#    r`(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})`r
-
