@@ -4,6 +4,8 @@ Predicated recursive descent parsing framework. Write 90% of your grammar in pla
 
 As soft proof, I wrote a working C99 grammar (src/grammar.txt). It successfully parses the preprocessor output of both gcc and clang `#include`-ing a kitchen sink worth of stdlib headers.
 
+**Performance**: 1.5x the parsing runtime of Clang on a 1MB C source file, with the included grammar.
+
 Features:
 
 - BNF syntax and automatic AST contruction: keep your grammar low-boilerplate
