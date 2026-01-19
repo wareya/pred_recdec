@@ -67,7 +67,6 @@ pub fn pred_recdec_parse_impl_recursive(
 ) -> Result<ASTNode, String>
 {
     let mut g_item = &global.g.points[gp_id];
-    let mut chosen_name = Rc::clone(&g_item.name);
     let mut chosen_name_id = g_item.name_id;
     
     let mut children = vec!();
@@ -227,7 +226,6 @@ pub fn pred_recdec_parse_impl_recursive(
                                 alt_id = 0;
                                 if matches!(d, MatchDirective::BecomeAs)
                                 {
-                                    chosen_name = g_item.name.clone();
                                     chosen_name_id = g_item.name_id;
                                 }
                                 continue 'top;
@@ -258,15 +256,15 @@ pub fn pred_recdec_parse_impl_recursive(
                     }
                     else
                     {
-                        Err(format!("Unknown custom hook {:?} inside of {chosen_name}", name))?
+                        Err(format!("Unknown custom hook {:?} inside of {}", name, global.g.string_cache_inv[chosen_name_id as usize]))?
                     }
                     matched = true;
                 }
-                _ => Err(format!("Term type {:?} not supported in this position in a rule (context: {chosen_name})", term))?
+                _ => Err(format!("Term type {:?} not supported in this position in a rule (context: {})", term, global.g.string_cache_inv[chosen_name_id as usize]))?
             }
             if !matched
             {
-                Err(format!("Failed to match token at {i} in rule {chosen_name} alt {alt_id}. Token is `{:?}`. Rule is {:?}", tokens.get(i).map(|x| x.text.clone()), term))?
+                Err(format!("Failed to match token at {i} in rule {} alt {alt_id}. Token is `{:?}`. Rule is {:?}", global.g.string_cache_inv[chosen_name_id as usize], tokens.get(i).map(|x| x.text.clone()), term))?
             }
             //if term_idx == alt.matching_terms.len() && depth == 0 && i < tokens.len() { return Err(format!("Incomplete parse. Ended at {i}")); }
             term_idx += 1;
@@ -280,7 +278,7 @@ pub fn pred_recdec_parse_impl_recursive(
         });
     }
     
-    Err(format!("Failed to match rule {chosen_name} at token position {token_start}"))
+    Err(format!("Failed to match rule {} at token position {token_start}", global.g.string_cache_inv[chosen_name_id as usize]))
 }
 
 pub fn visit_mut(n : &mut ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
