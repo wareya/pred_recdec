@@ -13,17 +13,46 @@ pub fn get_char_at_byte(s : &str, i : usize) -> char
 #[derive(Debug, Clone)]
 pub struct RegexCacher {
     r : Regex,
-    cache : RefCell<HashMap<Rc<String>, bool>>,
+    cache : Rc<RefCell<HashMap<Rc<String>, bool>>>,
+    cache2 : Rc<RefCell<HashMap<u32, bool>>>,
 }
 
 impl RegexCacher {
-    pub fn new(r : Regex) -> RegexCacher { RegexCacher { r, cache : RefCell::new(HashMap::default()) } }
+    pub fn new(r : Regex, cache_pool : Option<&mut HashMap<String, (Rc<RefCell<HashMap<Rc<String>, bool>>>, Rc<RefCell<HashMap<u32, bool>>>)>>) -> RegexCacher
+    {
+        let s = r.as_str().to_string();
+        let mut cache = Rc::new(RefCell::new(HashMap::default()));
+        let mut cache2 = Rc::new(RefCell::new(HashMap::default()));
+        if let Some(c) = cache_pool
+        {
+            if let Some(cached) = c.get(&s)
+            {
+                cache = Rc::clone(&cached.0);
+                cache2 = Rc::clone(&cached.1);
+            }
+            else
+            {
+                c.insert(s.clone(), (cache.clone(), cache2.clone()));
+            }
+        }
+        
+        RegexCacher { r, cache, cache2 }
+    }
     pub fn is_match(&self, s : &Rc<String>) -> bool
     {
         let mut cache = self.cache.borrow_mut();
         if let Some(result) = cache.get(s) { return *result; }
         let ret = self.r.is_match(&*s);
         cache.insert(Rc::clone(s), ret);
+        ret
+    }
+    pub fn is_match_2(&self, i : u32, string_cache_inv : &Vec<Rc<String>>) -> bool
+    {
+        let mut cache = self.cache2.borrow_mut();
+        if let Some(result) = cache.get(&i) { return *result; }
+        let s = &string_cache_inv[i as usize];
+        let ret = self.r.is_match(&*s);
+        cache.insert(i, ret);
         ret
     }
 }
@@ -36,7 +65,8 @@ pub struct Grammar {
     pub literals: Vec<String>,
     pub regexes: Vec<Regex>,
     
-    pub string_cache : HashMap<String, Rc<String>>,
+    pub string_cache : HashMap<String, u32>,
+    pub string_cache_inv : Vec<Rc<String>>,
     
     pub bracket_pairs : Vec<(String, String)>,
     pub comments : Vec<String>,
@@ -48,7 +78,8 @@ pub struct Grammar {
 #[derive(Debug, Clone)]
 pub struct GrammarPoint {
     pub name: Rc<String>,
-    pub id: usize,
+    pub name_id: u32,
+    //pub id: u32,
     pub forms: Vec<Alternation>,
     pub recover: Option<(RegexCacher, bool)>,
 }
@@ -60,17 +91,17 @@ pub struct Alternation {
 
 #[derive(Debug, Clone)]
 pub enum MatchDirective {
-    Become, BecomeAs, Hoist, Any, Drop, Pruned,
+    Become, BecomeAs, Hoist, Any, Drop, DropIfNull, Pruned,
 }
 
 #[derive(Debug, Clone)]
 pub enum MatchingTerm {
     Rule(usize),
-    TermLit(Rc<String>),
+    TermLit(u32),
     TermRegex(RegexCacher),
     
     Eof,
-    Peek(isize, Rc<String>),
+    Peek(isize, u32),
     PeekR(isize, RegexCacher),
     PeekRes(isize, RegexCacher),
     Guard(Rc<String>),
@@ -79,20 +110,20 @@ pub enum MatchingTerm {
     _AutoTemp,
 }
 
-pub fn string_cache_lookup(string_cache : &mut HashMap<String, Rc<String>>, s : &str) -> Rc<String>
+pub fn string_cache_lookup(
+    string_cache : &mut HashMap<String, u32>,
+    string_cache_inv : &mut Vec<Rc<String>>,
+    s : &str) -> (Rc<String>, u32)
 {
-    if let Some(s) = string_cache.get(s)
+    if let Some(sn) = string_cache.get(s)
     {
-        return Rc::clone(s);
+        return (Rc::clone(&string_cache_inv[*sn as usize]), *sn);
     }
     let rc = Rc::new(s.to_string());
-    string_cache.insert(s.to_string(), Rc::clone(&rc));
-    rc
-}
-#[allow(unused)]
-pub fn string_cache_lookup_immut(string_cache : &HashMap<String, Rc<String>>, s : &str) -> Rc<String>
-{
-    Rc::clone(string_cache.get(s).unwrap())
+    let n = string_cache_inv.len().try_into().unwrap();
+    string_cache.insert(s.to_string(), n);
+    string_cache_inv.push(Rc::clone(&rc));
+    (rc, n)
 }
 
 pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
@@ -161,7 +192,7 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
                 rest = &rest[len..];
             }
             // regex
-            else if rest.starts_with("r`")
+            else if rest.starts_with("r`") || rest.starts_with("R`")
             {
                 if !found_separator { return Err(format!("Missing ::= on line {linenum}")); }
                 let end = rest[2..].find("`r").expect(&format!("Unterminated regex on line {linenum}"));
@@ -239,14 +270,17 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     }
     
     let mut string_cache = HashMap::new();
+    let mut string_cache_inv = Vec::new();
     let mut points = Vec::new();
     let mut literals = HashSet::new();
-    let mut regexes = Vec::new();
+    let mut lex_regexes = HashSet::new();
     
     let mut bracket_pairs = Vec::new();
     let mut comment_pairs = Vec::new();
     let mut comment_regexes = Vec::new();
     let mut comments = Vec::new();
+    
+    let mut cache_pool = HashMap::<String, _>::new();
     
     let mut reserved = None;
     for (name, raw_forms) in input.iter()
@@ -314,7 +348,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 if term_str.starts_with('"') && term_str.ends_with('"') && term_str.len() >= 2
                 {
                     let literal = term_str[1..term_str.len() - 1].replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n");
-                    matching_terms.push(MatchingTerm::TermLit(string_cache_lookup(&mut string_cache, &literal)));
+                    matching_terms.push(MatchingTerm::TermLit(string_cache_lookup(&mut string_cache, &mut string_cache_inv, &literal).1));
                     
                     literals.insert(literal.clone());
                     continue;
@@ -324,10 +358,18 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     let pattern = &term_str[2..term_str.len() - 2];
                     let pattern_all = format!("\\A(?:{pattern})\\z"); // full match (for parsing)
                     let pattern = format!("\\A(?:{pattern})"); // at start (for tokenization)
-                    let re = Regex::new(&pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
-                    regexes.push(re.clone());
+                    lex_regexes.insert(pattern);
                     let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
-                    matching_terms.push(MatchingTerm::TermRegex(RegexCacher::new(re2)));
+                    matching_terms.push(MatchingTerm::TermRegex(RegexCacher::new(re2, Some(&mut cache_pool))));
+                    continue;
+                }
+                // non-tokenizing regex (optimization: hide redundant regexes from the tokenizer)
+                if term_str.starts_with("R`") && term_str.ends_with("`r") && term_str.len() >= 4
+                {
+                    let pattern = &term_str[2..term_str.len() - 2];
+                    let pattern_all = format!("\\A(?:{pattern})\\z"); // full match (for parsing)
+                    let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
+                    matching_terms.push(MatchingTerm::TermRegex(RegexCacher::new(re2, Some(&mut cache_pool))));
                     continue;
                 }
                 if matches!(&**term_str, "@RECOVER" | "@recover" | "@RECOVER_BEFORE" | "@recover_before") && i < raw_alt.len()
@@ -339,7 +381,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                     // TODO: make regex cachers use interior mutability and share the cache
                     if recover.is_some() { Err(format!("Rule {name} has multiple @recover items. Only one is supported."))? }
-                    recover = Some((RegexCacher::new(re2), matches!(&**term_str, "@RECOVER" | "@recover")));
+                    recover = Some((RegexCacher::new(re2, Some(&mut cache_pool)), matches!(&**term_str, "@RECOVER" | "@recover")));
                     i += 1;
                     continue;
                 }
@@ -367,7 +409,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                             return Err(format!("@peek guards only accept plain strings"));
                         }
                         let literal = literal[1..literal.len() - 1].replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n");
-                        let s = string_cache_lookup(&mut string_cache, &literal);
+                        let s = string_cache_lookup(&mut string_cache, &mut string_cache_inv, &literal).1;
                         matching_terms.push(MatchingTerm::Peek(n, s));
                     }
                     else
@@ -378,13 +420,13 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                         let pattern_all = format!("\\A(?:{})\\z", pattern);
                         let re2 = Regex::new(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                         // TODO: make regex cachers use interior mutability and share the cache
-                        if term_str == "@PEEK" || term_str == "@peek"
+                        if term_str == "@PEEKRES" || term_str == "@peekres"
                         {
-                            matching_terms.push(MatchingTerm::PeekRes(n, RegexCacher::new(re2)));
+                            matching_terms.push(MatchingTerm::PeekRes(n, RegexCacher::new(re2, Some(&mut cache_pool))));
                         }
                         else
                         {
-                            matching_terms.push(MatchingTerm::PeekR(n, RegexCacher::new(re2)));
+                            matching_terms.push(MatchingTerm::PeekR(n, RegexCacher::new(re2, Some(&mut cache_pool))));
                         }
                     }
                     i += 5;
@@ -397,7 +439,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                         return Err(format!("Invalid guard syntax: must be @guard(name)"));
                     }
                     let literal = &raw_alt[i+1];
-                    let s = string_cache_lookup(&mut string_cache, &literal);
+                    let s = string_cache_lookup(&mut string_cache, &mut string_cache_inv, &literal).0;
                     matching_terms.push(MatchingTerm::Guard(s));
                     i += 3;
                     continue;
@@ -409,7 +451,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                         return Err(format!("Invalid hook syntax: must be @hook(name)"));
                     }
                     let literal = &raw_alt[i+1];
-                    let s = string_cache_lookup(&mut string_cache, &literal);
+                    let s = string_cache_lookup(&mut string_cache, &mut string_cache_inv, &literal).0;
                     matching_terms.push(MatchingTerm::Hook(s));
                     i += 3;
                     continue;
@@ -442,8 +484,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 {
                     Some(MatchingTerm::TermLit(s)) =>
                     {
-                        let s = Rc::clone(s);
-                        matching_terms[0] = MatchingTerm::Peek(0, s);
+                        matching_terms[0] = MatchingTerm::Peek(0, *s);
                     }
                     Some(MatchingTerm::TermRegex(r)) =>
                     {
@@ -471,22 +512,31 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                 && matches!(x, MatchingTerm::Peek(_, _) | MatchingTerm::PeekR(_, _) | MatchingTerm::Guard(_) | MatchingTerm::Eof) { true } else { false })
             { num_nonguards += 1; }
         }
+        
+        if index > 4000000000
+        {
+            Err(format!("More than 4 billion grammar terms in grammar. What are you doing??? STOP!!!!! (╯°□°）╯︵ ┻━┻"))?
+        }
+        let (name, name_id) = string_cache_lookup(&mut string_cache, &mut string_cache_inv, &name);
         points.push(GrammarPoint
         {
-            name: Rc::new(name.clone()),
-            id: index,
+            name,
+            name_id,
+            //id: index as u32,
             forms,
             recover,
         });
     }
-    if points.len() > 4000000000
-    {
-        Err(format!("More than 4 billion grammar terms in grammar. What are you doing??? STOP!!!!! (╯°□°）╯︵ ┻━┻"))?
-    }
     
     let mut literals = literals.into_iter().collect::<Vec<_>>();
     literals.sort();
-    Ok(Grammar { points, by_name, literals, regexes, string_cache, bracket_pairs, comments, comment_pairs, comment_regexes, reserved })
+    
+    let mut regexes = Vec::new();
+    for r in lex_regexes
+    {
+        regexes.push(Regex::new(&r).map_err(|e| format!("Invalid regex '{}': {}", r, e))?);
+    }
+    Ok(Grammar { points, by_name, literals, regexes, string_cache, string_cache_inv, bracket_pairs, comments, comment_pairs, comment_regexes, reserved })
 }
 
 pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
@@ -496,7 +546,7 @@ pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
 
 #[derive(Debug, Clone, Default)]
 pub struct Token {
-    pub text : Rc<String>,
+    pub text : u32,
     pub pair : isize,
 }
 
@@ -532,7 +582,11 @@ pub fn tokenize(
     
     for text in g.literals.iter()
     {
-        string_cache_lookup(&mut g.string_cache, text);
+        string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, text);
+    }
+    for point in g.points.iter()
+    {
+        string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &point.name);
     }
     
     let mut openers = HashSet::new();
@@ -540,10 +594,16 @@ pub fn tokenize(
     let mut stacks = HashMap::new();
     for (l, r) in &g.bracket_pairs
     {
-        let lsc = string_cache_lookup(&mut g.string_cache, &l);
-        openers.insert(Rc::clone(&lsc));
-        closers.insert(string_cache_lookup(&mut g.string_cache, &r), Rc::clone(&lsc));
-        stacks.insert(lsc, Vec::<usize>::new());
+        let lsc = string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &l);
+        openers.insert(lsc.1);
+        closers.insert(string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &r).1, lsc.1);
+        stacks.insert(lsc.1, Vec::<usize>::new());
+    }
+    
+    println!("num regexes to check: {}", g.regexes.len());
+    for r in &g.regexes
+    {
+        println!("{:?}", r.as_str());
     }
     
     'top: while !s.is_empty()
@@ -555,6 +615,7 @@ pub fn tokenize(
                 s = &s[get_char_at_byte(s, 0).len_utf8()..];
             }
             if s.is_empty() { break; }
+            continue 'top;
         }
         
         // Pure regex comments
@@ -621,15 +682,15 @@ pub fn tokenize(
             return Err(format!("Failed to tokenize at index {}:{}[...]", s_orig.len()-s.len(), &s[..5.min(s.len())]));
         }
         
-        let text = string_cache_lookup(&mut g.string_cache, &s[..longest]);
-        let mut token = Token { text : Rc::clone(&text), pair : 0 };
-        if openers.contains(&text) && let Some(s) = stacks.get_mut(&text)
+        let text = string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &s[..longest]);
+        let mut token = Token { text : text.1, pair : 0 };
+        if openers.contains(&text.1) && let Some(s) = stacks.get_mut(&text.1)
         {
             s.push(tokens.len());
         }
-        if let Some(l) = closers.get(&text) && let Some(s) = stacks.get_mut(l)
+        if let Some(l) = closers.get(&text.1) && let Some(s) = stacks.get_mut(l)
         {
-            let n = s.pop().ok_or_else(|| format!("Unmatched delimiter at {}: {}", s_orig.len() - s.len(), text))?;
+            let n = s.pop().ok_or_else(|| format!("Unmatched delimiter at {}: {}", s_orig.len() - s.len(), text.0))?;
             let me = tokens.len();
             let diff = me.checked_signed_diff(n).ok_or_else(|| format!("Input too long"))?;
             token.pair = -diff;

@@ -23,20 +23,24 @@ declaration_specifier ::=
     | @peek(0, "__attribute__") attribute
     | type_specifier
 
+# gcc extension
 attribute_list ::=
     @peek(0, "__attribute__") attribute $become attribute_list
     | #empty
 
 storage_class_specifier ::=
-    @auto r`typedef|extern|static|__extension__|auto|register`r
+    @auto R`typedef|extern|static|__extension__|auto|register`r
 type_specifier ::=
-    @auto r`void|char|short|int|__builtin_va_list|long|float|double|signed|unsigned|_Bool|_Complex`r
+    @auto R`void|char|short|int|__builtin_va_list|long|float|double|signed|unsigned|_Bool|_Complex`r
     | @peek(0, "enum") enum_specifier
     | @peekr(0, r`struct|union`r) struct_or_union_specifier
+    | @peekr(0, r`typeof|__typeof__`r) typeof_specifier
     | typedef_name
 type_qualifier ::=
-    @auto r`const|restrict|__restrict__|volatile`r
+    @auto R`const|restrict|__restrict__|volatile`r
 
+typeof_specifier ::=
+    R`typeof|__typeof__`r "(" !hook(many_balanced) ")"
 struct_or_union_specifier ::=
     struct_or_union attribute_list $become struct_or_union_specifier_info
 struct_or_union_specifier_info ::=
@@ -309,7 +313,10 @@ sizeof_argument ::=
     @auto "(" type_name ")"
     | unary_expression
 unary_operator ::=
-    r`[&*\+\-~!]`r
+    R`[&*\+\-~!]`r
+    
+_lexical_operator ::= # intentional dummy orphan rule to contain a lexer rule
+    r`(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*\+\-~!*/%\+\-<>=]`r
 
 cast_expression ::=
     @guard(is_primitive_cast) "(" type_name ")" $become cast_expression
@@ -318,27 +325,27 @@ cast_expression ::=
 multiplicative_expression ::=
     cast_expression $become multiplicative_expression_tail
 multiplicative_expression_tail ::=
-    @auto r`[*/%]`r cast_expression $become multiplicative_expression_tail | #empty
+    @auto R`[*/%]`r cast_expression $become multiplicative_expression_tail | #empty
 
 additive_expression ::=
     multiplicative_expression $become additive_expression_tail
 additive_expression_tail ::=
-    @auto r`[\+\-]`r multiplicative_expression $become additive_expression_tail | #empty
+    @auto R`[\+\-]`r multiplicative_expression $become additive_expression_tail | #empty
 
 shift_expression ::=
     additive_expression $become shift_expression_tail
 shift_expression_tail ::=
-    @auto r`<<|>>`r additive_expression $become shift_expression_tail | #empty
+    @auto R`<<|>>`r additive_expression $become shift_expression_tail | #empty
 
 relational_expression ::=
     shift_expression $become relational_expression_tail
 relational_expression_tail ::=
-    @auto r`<=|>=|<|>`r shift_expression $become relational_expression_tail | #empty
+    @auto R`<=|>=|<|>`r shift_expression $become relational_expression_tail | #empty
 
 equality_expression ::=
     relational_expression $become equality_expression_tail
 equality_expression_tail ::=
-    @auto r`==|!=`r relational_expression $become equality_expression_tail | #empty
+    @auto R`==|!=`r relational_expression $become equality_expression_tail | #empty
 
 AND_expression ::=
     equality_expression $become AND_expression_tail
@@ -361,7 +368,8 @@ logical_AND_expression_tail ::=
     @auto "&&" inclusive_OR_expression $become logical_AND_expression_tail | #empty
 
 logical_OR_expression ::=
-    logical_AND_expression $become logical_OR_expression_tail
+    @peekr(1, r`[,;)\]]`r) primary_expression
+    | logical_AND_expression $become logical_OR_expression_tail
 logical_OR_expression_tail ::=
     @auto "||" logical_AND_expression $become logical_OR_expression_tail | #empty
 
@@ -379,7 +387,7 @@ conditional_expression_tail ::=
 assignment_expression ::=
     conditional_expression $become assignment_expression_tail
 assignment_expression_tail ::=
-    @auto r`(?:\*|/|%|\+|-|<<|>>|&|\^|\|)?=`r conditional_expression $become assignment_expression_tail | #empty
+    @auto R`(?:\*|/|%|\+|-|<<|>>|&|\^|\|)?=`r conditional_expression $become assignment_expression_tail | #empty
 # I suspect this is roughly what real C compilers do and that they enforce the semantics rule afterwards.
 # For example in GCC this is a semantics error instead of a syntax error, saying that x+5 isn't a valid lvalue. Clang fails similarly:
 # int myfunc() {
@@ -412,7 +420,7 @@ statement ::=
 
 # gcc extension
 asm_statement ::=
-    r`__asm|__asm__|asm`r asm_qualifiers "(" asm_body ")"
+    R`__asm|__asm__|asm`r asm_qualifiers "(" asm_body ")"
 asm_qualifiers ::=
     @auto "volatile" $become asm_qualifiers
     | @auto "__volatile__" $become asm_qualifiers

@@ -9,11 +9,9 @@ use crate::bnf::*;
 
 #[derive(Clone, Debug, Default)]
 pub struct ASTNode {
-    pub text : Rc<String>,
-    pub children : Option<Vec<Box<ASTNode>>>,
-    #[allow(unused)] pub token_start : usize,
-    pub token_count : usize,
-    pub poisoned : bool,
+    pub children : Option<Vec<ASTNode>>,
+    pub token_count : u32,
+    pub text : u32, // index into grammar.string_cache_inv
 }
 
 // ASTs can be deeply recursive, so we need to avoid destroying them recursively.
@@ -55,7 +53,7 @@ impl AnyMap {
 
 pub struct PrdGlobal<'a> {
     pub guards : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>,
-    pub hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<ASTNode>>) -> Result<usize, String>>>,
+    pub hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>,
     
     #[allow(unused)] pub udata : AnyMap,
     pub udata_r : HashMap<usize, RegexCacher>,
@@ -65,13 +63,14 @@ pub struct PrdGlobal<'a> {
 
 pub fn pred_recdec_parse_impl_recursive(
     global : &mut PrdGlobal,
-    g : &Grammar, gp_id : usize, tokens : &[Token], depth : usize, token_start : usize
-) -> Result<Box<ASTNode>, String>
+    gp_id : usize, tokens : &[Token], token_start : usize
+) -> Result<ASTNode, String>
 {
-    let mut g_item = &g.points[gp_id];
-    let mut chosen_name = g_item.name.clone();
+    let mut g_item = &global.g.points[gp_id];
+    let mut chosen_name = Rc::clone(&g_item.name);
+    let mut chosen_name_id = g_item.name_id;
     
-    let mut children : Vec<Box<ASTNode>> = vec!();
+    let mut children = vec!();
     let mut i = token_start;
     
     //println!("entered {chosen_name} at {i}");
@@ -99,13 +98,13 @@ pub fn pred_recdec_parse_impl_recursive(
                     match f(global, tokens, i)
                     {
                         GuardResult::Accept => accepted = true,
-                        GuardResult::HardError(e) => { Err(e)? }
+                        GuardResult::HardError(e) => { return Err(e); }
                         _ => {}
                     }
                 }
                 else
                 {
-                    Err(format!("Unknown guard {guard}"))?
+                    return Err(format!("Unknown guard {guard}"));
                 }
                 term_idx += 1;
             }
@@ -113,7 +112,7 @@ pub fn pred_recdec_parse_impl_recursive(
             {
                 accepted = false;
                 let loc = (i as isize + loc) as usize;
-                if loc < tokens.len() && Rc::ptr_eq(&tokens[loc].text, tester)
+                if loc < tokens.len() && tokens[loc].text == *tester
                 {
                     accepted = true;
                 }
@@ -123,7 +122,8 @@ pub fn pred_recdec_parse_impl_recursive(
             {
                 accepted = false;
                 let loc = (i as isize + loc) as usize;
-                if loc < tokens.len() && tester.is_match(&tokens[loc].text)
+                //if loc < tokens.len() && tester.is_match(&global.g.string_cache_inv[tokens[loc].text as usize])
+                if loc < tokens.len() && tester.is_match_2(tokens[loc].text, &global.g.string_cache_inv)
                 {
                     accepted = true;
                 }
@@ -133,12 +133,13 @@ pub fn pred_recdec_parse_impl_recursive(
             {
                 accepted = false;
                 let loc = (i as isize + loc) as usize;
-                if loc < tokens.len() && tester.is_match(&tokens[loc].text)
+                //if loc < tokens.len() && tester.is_match(&global.g.string_cache_inv[tokens[loc].text as usize])
+                if loc < tokens.len() && tester.is_match_2(tokens[loc].text, &global.g.string_cache_inv)
                 {
                     accepted = true;
-                    if let Some(r) = &g.reserved
+                    if let Some(r) = &global.g.reserved
                     {
-                        if r.is_match(&tokens[loc].text) { accepted = false; }
+                        if r.is_match(&global.g.string_cache_inv[tokens[loc].text as usize]) { accepted = false; }
                     }
                 }
                 term_idx += 1;
@@ -153,6 +154,8 @@ pub fn pred_recdec_parse_impl_recursive(
         
         if !accepted { continue; }
         
+        children.reserve(alt.matching_terms.len());
+        
         while term_idx < alt.matching_terms.len()
         {
             let term = &alt.matching_terms[term_idx];
@@ -160,31 +163,30 @@ pub fn pred_recdec_parse_impl_recursive(
             match term {
                 MatchingTerm::Rule(id) =>
                 {
-                    let mut child = pred_recdec_parse_impl_recursive(global, g, *id, tokens, depth + 1, i);
-                    if child.is_err() && g.points[*id].recover.is_some()
+                    let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, i);
+                    child = std::hint::black_box(child);
+                    if child.is_err() && global.g.points[*id].recover.is_some()
                     {
-                        if let Some((r, after)) = &g.points[*id].recover
+                        if let Some((r, after)) = &global.g.points[*id].recover
                         {
                             let mut j = i + 1;
-                            while j < tokens.len() && !r.is_match(&tokens[j].text)
+                            while j < tokens.len() && !r.is_match(&global.g.string_cache_inv[tokens[j].text as usize])
                             {
                                 j += 1;
                             }
                             if j < tokens.len()
                             {
                                 if *after { j += 1; }
-                                child = Ok(Box::new(ASTNode {
-                                    text : g.points[*id].name.clone(),
+                                child = Ok(ASTNode {
+                                    text : global.g.points[*id].name_id,
                                     children : Some(vec!()),
-                                    token_start : i,
-                                    token_count : j - i,
-                                    poisoned : true,
-                                }));
+                                    token_count : (j - i) as u32 ^ !0u32,
+                                });
                             }
                         }
                     }
                     let child = child.map_err(|e| format!("In {}: {e}", g_item.name))?;
-                    i += child.token_count;
+                    i += child.token_count as usize;
                     children.push(child);
                     matched = true;
                 }
@@ -192,21 +194,21 @@ pub fn pred_recdec_parse_impl_recursive(
                 {
                     if i < tokens.len() && tokens[i].text == *lit
                     {
-                        children.push(Box::new(ASTNode {
+                        children.push(ASTNode {
                             text : tokens[i].text.clone(), children : None,
-                            token_start : i, token_count : 1, poisoned : false
-                        }));
+                            token_count : 1,
+                        });
                         //println!("munched {lit} at {i}");
                         i += 1;
                         matched = true;
                     }
                 }
-                MatchingTerm::TermRegex(regex) => if i < tokens.len() && regex.is_match(&tokens[i].text)
+                MatchingTerm::TermRegex(regex) => if i < tokens.len() && regex.is_match_2(tokens[i].text, &global.g.string_cache_inv)
                 {
-                    children.push(Box::new(ASTNode {
+                    children.push(ASTNode {
                         text : tokens[i].text.clone(), children : None,
-                        token_start : i, token_count : 1, poisoned : false
-                    }));
+                        token_count : 1,
+                    });
                     //println!("munched {} at {i}", tokens[i].text);
                     i += 1;
                     matched = true;
@@ -219,20 +221,24 @@ pub fn pred_recdec_parse_impl_recursive(
                         {
                             if let Some(MatchingTerm::Rule(id)) = alt.matching_terms.get(term_idx + 1)
                             {
-                                g_item = &g.points[*id];
+                                g_item = &global.g.points[*id];
                                 //println!("became {} at {i}", g_item.name);
                                 //println!("becoming {} from {}", g_item.name, chosen_name);
                                 alt_id = 0;
-                                if matches!(d, MatchDirective::BecomeAs) { chosen_name = g_item.name.clone(); }
+                                if matches!(d, MatchDirective::BecomeAs)
+                                {
+                                    chosen_name = g_item.name.clone();
+                                    chosen_name_id = g_item.name_id;
+                                }
                                 continue 'top;
                             }
                         }
                         MatchDirective::Any => if i < tokens.len()
                         {
-                            children.push(Box::new(ASTNode {
+                            children.push(ASTNode {
                                 text : tokens[i].text.clone(), children : None,
-                                token_start : i, token_count : 1, poisoned : false
-                            }));
+                                token_count : 1,
+                            });
                             matched = true;
                             i += 1;
                         }
@@ -266,15 +272,12 @@ pub fn pred_recdec_parse_impl_recursive(
             term_idx += 1;
         }
         
-        let poisoned = children.iter().map(|x| x.poisoned).fold(false, |a, b| a || b);
         //println!("accepted {chosen_name} from {token_start} to {i}");
-        return Ok(Box::new(ASTNode {
-            text : chosen_name,
+        return Ok(ASTNode {
+            text : chosen_name_id,
             children : Some(children),
-            token_start : token_start,
-            token_count : i - token_start,
-            poisoned,
-        }));
+            token_count : (i - token_start) as u32,
+        });
     }
     
     Err(format!("Failed to match rule {chosen_name} at token position {token_start}"))
@@ -296,8 +299,8 @@ pub fn visit_mut(n : &mut ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
 pub fn pred_recdec_parse(
     g : &Grammar, root_rule_name : &str, tokens : &[Token],
     guards : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>,
-    hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<Box<ASTNode>>) -> Result<usize, String>>>,
-) -> Result<Box<ASTNode>, String>
+    hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>,
+) -> Result<ASTNode, String>
 {
     let gp_id = g.by_name.get(root_rule_name).unwrap();
     let mut global = PrdGlobal {
@@ -314,7 +317,7 @@ pub fn pred_recdec_parse(
         let _ = f(&mut global, tokens, 0, &mut vec!());
     }
     
-    pred_recdec_parse_impl_recursive(&mut global, g, *gp_id, tokens, 0, 0)
+    pred_recdec_parse_impl_recursive(&mut global, *gp_id, tokens, 0)
 }
 
 
@@ -324,9 +327,9 @@ pub fn print_ast_pred_recdec(ast : &ASTNode, indent : usize)
     print!("{}", " ".repeat(indent));
     if let Some(c) = &ast.children
     {
-        if ast.poisoned { println!("{} (POISONED) {{", ast.text); }
-        else { println!("{} {{", ast.text); }
-        for c in c
+        // if ast.poisoned { println!("{} (POISONED) {{", ast.text); } else
+        { println!("{} {{", ast.text); }
+        for c in c.iter()
         {
             print_ast_pred_recdec(c, indent+1);
         }

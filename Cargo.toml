@@ -1,5 +1,5 @@
 [package]
-name = "earley-tutorial"
+name = "pred-recdec"
 version = "0.1.0"
 edition = "2024"
 
@@ -13,3 +13,8 @@ complexity = "warn"
 perf = "warn"
 suspicious = "warn"
 correctness = "deny"
+
+[profile.release]
+opt-level = 3
+debug = true
+#lto = "fat"
