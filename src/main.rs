@@ -358,11 +358,20 @@ fn main() {
         }
     ));
     
+    hooks.insert("fix_infix_precedence".to_string(),
+        Rc::new(|_global : &mut PrdGlobal, tokens : &[Token], mut i : usize, children : &mut Vec<ASTNode>|
+        {
+            if children.len() <= 3 { return Ok(0); }
+            // TODO FIXME URGENT
+            Ok(0)
+        }
+    ));
+    
     let ast = pred_recdec_parse(&g, "S", &tokens[..], guards, hooks);
     println!("{}", ast.is_ok());
     println!("Parse time taken: {:?} under {} items", start.elapsed(), tokens.len());
     let start = std::time::Instant::now();
-    //if let Ok(ast) = &ast { print_ast_pred_recdec(ast, 0); }
+    //if let Ok(ast) = &ast { print_ast_pred_recdec(ast, &g.string_cache_inv, 0); }
     drop(ast.unwrap());
     println!("AST destruction time: {:?}", start.elapsed());
     println!("sizeof ASTNode {}", std::mem::size_of::<ASTNode>());

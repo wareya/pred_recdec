@@ -16,6 +16,8 @@ pub struct ASTNode {
 
 // ASTs can be deeply recursive, so we need to avoid destroying them recursively.
 // Collect all transitive children into self.
+// This is slower than normal dropping (around 2x the runtime) but much safer.
+/*
 impl Drop for ASTNode {
     fn drop(&mut self)
     {
@@ -33,6 +35,7 @@ impl Drop for ASTNode {
         }
     }
 }
+*/
 
 pub enum GuardResult {
     Accept,
@@ -72,6 +75,9 @@ pub fn pred_recdec_parse_impl_recursive(
     let mut children = vec!();
     let mut i = token_start;
     
+    let mut poisoned = false;
+    let mut pruned = false;
+    
     //println!("entered {chosen_name} at {i}");
     
     // Structured this way for the sake of $become
@@ -83,12 +89,23 @@ pub fn pred_recdec_parse_impl_recursive(
         let alt = &g_item.forms[alt_id];
         alt_id += 1;
         
+        if alt.matching_terms.len() == 0
+        {
+            return Ok(ASTNode {
+                text : chosen_name_id,
+                children : Some(children),
+                token_count : (i - token_start) as u32,
+            });
+        }
+        
         let mut term_idx = 0;
         
         let mut accepted = true;
-        match alt.matching_terms.get(0)
+        let first_term = alt.matching_terms.get(0);
+        let first_term = first_term.as_ref().unwrap();
+        match first_term
         {
-            Some(MatchingTerm::Guard(guard)) =>
+            MatchingTerm::Guard(guard) =>
             {
                 accepted = false;
                 if let Some(f) = global.guards.get(&**guard)
@@ -107,7 +124,7 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 term_idx += 1;
             }
-            Some(MatchingTerm::Peek(loc, tester)) =>
+            MatchingTerm::Peek(loc, tester) =>
             {
                 accepted = false;
                 let loc = (i as isize + loc) as usize;
@@ -117,7 +134,7 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 term_idx += 1;
             }
-            Some(MatchingTerm::PeekR(loc, tester)) =>
+            MatchingTerm::PeekR(loc, tester) =>
             {
                 accepted = false;
                 let loc = (i as isize + loc) as usize;
@@ -128,7 +145,7 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 term_idx += 1;
             }
-            Some(MatchingTerm::PeekRes(loc, tester)) =>
+            MatchingTerm::PeekRes(loc, tester) =>
             {
                 accepted = false;
                 let loc = (i as isize + loc) as usize;
@@ -143,7 +160,7 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 term_idx += 1;
             }
-            Some(MatchingTerm::Eof) =>
+            MatchingTerm::Eof =>
             {
                 accepted = i == tokens.len();
                 term_idx += 1;
@@ -153,13 +170,17 @@ pub fn pred_recdec_parse_impl_recursive(
         
         if !accepted { continue; }
         
-        children.reserve(alt.matching_terms.len());
+        if children.capacity() == 0
+        {
+            children.reserve_exact(alt.matching_terms.len());
+        }
         
         while term_idx < alt.matching_terms.len()
         {
             let term = &alt.matching_terms[term_idx];
             let mut matched = false;
-            match term {
+            match term
+            {
                 MatchingTerm::Rule(id) =>
                 {
                     let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, i);
@@ -185,7 +206,15 @@ pub fn pred_recdec_parse_impl_recursive(
                         }
                     }
                     let child = child.map_err(|e| format!("In {}: {e}", g_item.name))?;
-                    i += child.token_count as usize;
+                    if child.token_count as i32 >= 0
+                    {
+                        i += child.token_count as usize;
+                    }
+                    else
+                    {
+                        poisoned = true;
+                        i += (child.token_count ^ !0u32) as usize;
+                    }
                     children.push(child);
                     matched = true;
                 }
@@ -193,10 +222,13 @@ pub fn pred_recdec_parse_impl_recursive(
                 {
                     if i < tokens.len() && tokens[i].text == *lit
                     {
-                        children.push(ASTNode {
-                            text : tokens[i].text.clone(), children : None,
-                            token_count : 1,
-                        });
+                        if !pruned
+                        {
+                            children.push(ASTNode {
+                                text : tokens[i].text.clone(), children : None,
+                                token_count : 1,
+                            });
+                        }
                         //println!("munched {lit} at {i}");
                         i += 1;
                         matched = true;
@@ -204,10 +236,13 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 MatchingTerm::TermRegex(regex) => if i < tokens.len() && regex.is_match_2(tokens[i].text, &global.g.string_cache_inv)
                 {
-                    children.push(ASTNode {
-                        text : tokens[i].text.clone(), children : None,
-                        token_count : 1,
-                    });
+                    if !pruned
+                    {
+                        children.push(ASTNode {
+                            text : tokens[i].text.clone(), children : None,
+                            token_count : 1,
+                        });
+                    }
                     //println!("munched {} at {i}", tokens[i].text);
                     i += 1;
                     matched = true;
@@ -240,6 +275,16 @@ pub fn pred_recdec_parse_impl_recursive(
                             matched = true;
                             i += 1;
                         }
+                        MatchDirective::Pruned => { pruned = true; matched = true; }
+                        MatchDirective::HoistUnitary =>
+                        {
+                            matched = true;
+                            if children.len() == 1 || children[0].children.is_some()
+                            {
+                                chosen_name_id = children[0].text;
+                                children = children[0].children.take().unwrap();
+                            }
+                        }
                         _ => panic!("TODO: {:?}", d), // also TODO: combine into parent match once all implemented
                     }
                 }
@@ -266,15 +311,19 @@ pub fn pred_recdec_parse_impl_recursive(
             {
                 Err(format!("Failed to match token at {i} in rule {} alt {alt_id}. Token is `{:?}`. Rule is {:?}", global.g.string_cache_inv[chosen_name_id as usize], tokens.get(i).map(|x| x.text.clone()), term))?
             }
-            //if term_idx == alt.matching_terms.len() && depth == 0 && i < tokens.len() { return Err(format!("Incomplete parse. Ended at {i}")); }
             term_idx += 1;
         }
         
         //println!("accepted {chosen_name} from {token_start} to {i}");
+        let mut token_count = (i - token_start) as u32;
+        if poisoned
+        {
+            token_count = token_count ^ !0u32;
+        }
         return Ok(ASTNode {
             text : chosen_name_id,
             children : Some(children),
-            token_count : (i - token_start) as u32,
+            token_count,
         });
     }
     
@@ -320,22 +369,23 @@ pub fn pred_recdec_parse(
 
 
 #[allow(unused)]
-pub fn print_ast_pred_recdec(ast : &ASTNode, indent : usize)
+pub fn print_ast_pred_recdec(ast : &ASTNode, string_cache_inv : &Vec<Rc<String>>, indent : usize)
 {
     print!("{}", " ".repeat(indent));
     if let Some(c) = &ast.children
     {
         // if ast.poisoned { println!("{} (POISONED) {{", ast.text); } else
-        { println!("{} {{", ast.text); }
+        //{ println!("{} {{", ast.text); }
+        { println!("{} {{", string_cache_inv[ast.text as usize]); }
         for c in c.iter()
         {
-            print_ast_pred_recdec(c, indent+1);
+            print_ast_pred_recdec(c, string_cache_inv, indent+1);
         }
         print!("{}", " ".repeat(indent));
         println!("}};");
     }
     else
     {
-        println!("{}", ast.text);
+        println!("{}", string_cache_inv[ast.text as usize]);
     }
 }

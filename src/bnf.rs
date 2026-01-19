@@ -91,7 +91,7 @@ pub struct Alternation {
 
 #[derive(Debug, Clone)]
 pub enum MatchDirective {
-    Become, BecomeAs, Hoist, Any, Drop, DropIfNull, Pruned,
+    Become, BecomeAs, Hoist, Any, Drop, DropIfNull, Pruned, HoistUnitary,
 }
 
 #[derive(Debug, Clone)]
@@ -99,15 +99,15 @@ pub enum MatchingTerm {
     Rule(usize),
     TermLit(u32),
     TermRegex(RegexCacher),
+    Directive(MatchDirective),
+    Hook(Rc<String>),
+    _AutoTemp,
     
     Eof,
     Peek(isize, u32),
     PeekR(isize, RegexCacher),
     PeekRes(isize, RegexCacher),
     Guard(Rc<String>),
-    Hook(Rc<String>),
-    Directive(MatchDirective),
-    _AutoTemp,
 }
 
 pub fn string_cache_lookup(
@@ -136,8 +136,24 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
     let mut name : Option<String> = None;
     let mut found_separator = false;
     
-    for (mut linenum, mut rest) in input.lines().enumerate()
+    let lines = input.lines().map(|x| x.to_string()).collect::<Vec<_>>();
+    let mut lines2 : Vec<String> = vec!();
+    for l in lines
     {
+        if let Some(l0) = lines2.last_mut()
+        {
+            if l0.ends_with("\\")
+            {
+                *l0 = format!("{}{l}", &l0[..l0.len()-1]);
+                continue;
+            }
+        }
+        
+        lines2.push(l);
+    }
+    for (mut linenum, rest) in lines2.iter().enumerate()
+    {
+        let mut rest : &str = rest;
         linenum += 1; // user-facing line numbers are 1-indexed
         
         let _split = rest.trim().split_whitespace().collect::<Vec<_>>();
@@ -471,6 +487,16 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     matching_terms.push(MatchingTerm::Directive(MatchDirective::Any));
                     continue;
                 }
+                if matches!(&**term_str, "$PRUNED" | "$pruned")
+                {
+                    matching_terms.push(MatchingTerm::Directive(MatchDirective::Pruned));
+                    continue;
+                }
+                if matches!(&**term_str, "$HOIST_IF_UNITARY" | "$hoist_if_unitary")
+                {
+                    matching_terms.push(MatchingTerm::Directive(MatchDirective::HoistUnitary));
+                    continue;
+                }
                 let id = by_name.get(term_str).ok_or_else(|| format!("Not a defined grammar rule: '{term_str}' (context: '{name}')"))?;
                 matching_terms.push(MatchingTerm::Rule(*id));
             }
@@ -600,11 +626,13 @@ pub fn tokenize(
         stacks.insert(lsc.1, Vec::<usize>::new());
     }
     
+    /*
     println!("num regexes to check: {}", g.regexes.len());
     for r in &g.regexes
     {
         println!("{:?}", r.as_str());
     }
+    */
     
     'top: while !s.is_empty()
     {

@@ -290,7 +290,7 @@ postfix_trailer_star ::=
     | #empty
 postfix_trailer ::=
     @auto "[" expression "]"
-    | @auto "(" $become postfix_trailer_paren
+    | @peek(0, "(") $pruned "(" $become postfix_trailer_paren
     | @auto "." identifier
     | @auto "->" identifier
     | @auto "++"
@@ -304,77 +304,32 @@ argument_expression_list_tail ::=
     @auto "," assignment_expression $become argument_expression_list_tail
     | #empty
 unary_expression ::=
-    @auto "++" unary_expression
-    | @auto "--" unary_expression
-    | @peekr(0, r`[&*\+\-~!]`r) unary_operator cast_expression
+    @auto "++" $become unary_expression
+    | @auto "--" $become unary_expression
     | @auto "sizeof" $become sizeof_argument
+    | @peekr(0, r`[&*\+\-~!]`r) unary_operator cast_expression
     | postfix_expression
 sizeof_argument ::=
     @auto "(" type_name ")"
-    | unary_expression
+    | $become unary_expression
 unary_operator ::=
     R`[&*\+\-~!]`r
-    
-_lexical_operator ::= # intentional dummy orphan rule to contain a lexer rule
-    r`(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*\+\-~!*/%\+\-<>=]`r
 
 cast_expression ::=
     @guard(is_primitive_cast) "(" type_name ")" $become cast_expression
     | unary_expression
 
-multiplicative_expression ::=
-    cast_expression $become multiplicative_expression_tail
-multiplicative_expression_tail ::=
-    @auto R`[*/%]`r cast_expression $become multiplicative_expression_tail | #empty
-
-additive_expression ::=
-    multiplicative_expression $become additive_expression_tail
-additive_expression_tail ::=
-    @auto R`[\+\-]`r multiplicative_expression $become additive_expression_tail | #empty
-
-shift_expression ::=
-    additive_expression $become shift_expression_tail
-shift_expression_tail ::=
-    @auto R`<<|>>`r additive_expression $become shift_expression_tail | #empty
-
-relational_expression ::=
-    shift_expression $become relational_expression_tail
-relational_expression_tail ::=
-    @auto R`<=|>=|<|>`r shift_expression $become relational_expression_tail | #empty
-
-equality_expression ::=
-    relational_expression $become equality_expression_tail
-equality_expression_tail ::=
-    @auto R`==|!=`r relational_expression $become equality_expression_tail | #empty
-
-AND_expression ::=
-    equality_expression $become AND_expression_tail
-AND_expression_tail ::=
-    @auto "&" equality_expression $become AND_expression_tail | #empty
-
-exclusive_OR_expression ::=
-    AND_expression $become exclusive_OR_expression_tail
-exclusive_OR_expression_tail ::=
-    @auto "^" AND_expression $become exclusive_OR_expression_tail | #empty
-
-inclusive_OR_expression ::=
-    exclusive_OR_expression $become inclusive_OR_expression_tail
-inclusive_OR_expression_tail ::=
-    @auto "|" exclusive_OR_expression $become inclusive_OR_expression_tail | #empty
-
-logical_AND_expression ::=
-    inclusive_OR_expression $become logical_AND_expression_tail
-logical_AND_expression_tail ::=
-    @auto "&&" inclusive_OR_expression $become logical_AND_expression_tail | #empty
-
-logical_OR_expression ::=
-    @peekr(1, r`[,;)\]]`r) primary_expression
-    | logical_AND_expression $become logical_OR_expression_tail
-logical_OR_expression_tail ::=
-    @auto "||" logical_AND_expression $become logical_OR_expression_tail | #empty
+infix_expression ::=
+    cast_expression $become infix_expression_tail
+infix_expression_tail ::=
+    @auto R`(?x)(?:\
+        \|\||&&|==|>=|<=|!=|>>|<<|\
+        \*|\+|\^|\||&|-|/|%|>|<\
+    )`r cast_expression $become infix_expression_tail
+    | !hook(fix_infix_precedence) #empty # WARNING: fix_infix_precedence IS NOT ACTUALLY IMPLEMENTED YET!
 
 conditional_expression ::=
-    logical_OR_expression conditional_expression_tail
+    infix_expression conditional_expression_tail
 conditional_expression_tail ::=
     @auto "?" expression ":" conditional_expression | #empty
 
@@ -397,13 +352,14 @@ assignment_expression_tail ::=
 # ... and using x+5 instead of 5+x gives the same error. And using ++0 (yes, really) instead of 5+x gives the same error.
 
 expression ::=
-    assignment_expression $become expression_tail
+    @peekr(1, r`\]`r) primary_expression $become expression_tail
+    | assignment_expression $become expression_tail
 expression_tail ::=
     @auto "," assignment_expression $become expression_tail
     | #empty
 
 constant_expression ::=
-    conditional_expression
+    $become conditional_expression
 
 maybe_asm_statement ::=
     @peekr(0, r`__asm|__asm__|asm`r) asm_statement
@@ -580,20 +536,33 @@ func_knr_declaration_star ::=
     | #empty
 
 constant ::=
-    @auto r`(?x)   (?:  0[xX][a-fA-F0-9]+  |  [1-9][0-9]*  |  0[0-7]*  )       (?:[uU](ll|LL|l|L)?|(ll|LL|l|L)([uU])?)?`r
-    | @auto r`(?x)   (?:   (?: [0-9]*\.[0-9]+ | [0-9]+\. )  (?:[eE](-|\+)?[0-9]+)?   |   [0-9]+[eE](-|\+)?[0-9]+   )   [flFL]?`r
-    | @auto r`(?x)   0[xX]  (?:  [a-fA-F0-9]*\.[a-fA-F0-9]+  |  [a-fA-F0-9]+(\.)?  )  [pP](-|\+)?  [0-9]+   [flFL]?`r
-    | @auto r`(?x)   [L]?  \x27  (?:  [^\x27\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )+  \x27`r
+      @auto R`(?x)   (?:(?:  0[xX][a-fA-F0-9]+  |  [1-9][0-9]*  |  0[0-7]*  )       (?:[uU](ll|LL|l|L)?|(ll|LL|l|L)([uU])?)?)`r
+    | @auto R`(?x)   (?:(?:   (?: [0-9]*\.[0-9]+ | [0-9]+\. )  (?:[eE](-|\+)?[0-9]+)?   |   [0-9]+[eE](-|\+)?[0-9]+   )   [flFL]?)`r
+    | @auto R`(?x)   (?:0[xX]  (?:  [a-fA-F0-9]*\.[a-fA-F0-9]+  |  [a-fA-F0-9]+(\.)?  )  [pP](-|\+)?  [0-9]+   [flFL]?)`r
+    | @auto R`(?x)   [L]?  \x27  (?:  [^\x27\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )+  \x27`r
     | @guard(is_known_enum) enumeration_constant
 
 enumeration_constant ::=
     identifier
 
 string_literal ::=
-    r`(?x)  [L]?  \x22  (?:[^\x22\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )*\x22`r
+    R`(?x)  [L]?  \x22  (?:[^\x22\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )*\x22`r
 
 identifier_maybe ::=
-    @auto r`(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*`r
+    @auto R`(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*`r
     | #empty
 identifier ::=
-    r`(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*`r
+    R`(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*`r
+
+# Dummy for tokenization
+_token_dummy ::=
+    r`(?x)(?:(?:   (?: [0-9]*\.[0-9]+ | [0-9]+\. )  (?:[eE](-|\+)?[0-9]+)?   |   [0-9]+[eE](-|\+)?[0-9]+   )   [flFL]?)|\
+          (?:0[xX]  (?:  [a-fA-F0-9]*\.[a-fA-F0-9]+  |  [a-fA-F0-9]+(\.)?  )  [pP](-|\+)?  [0-9]+   [flFL]?)|\
+          (?:[L]?  \x27  (?:[^\x27\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )+\x27)|\
+          (?:[L]?  \x22  (?:[^\x22\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )*\x22)|\
+          (?:(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*)|\
+          (?:(?:  0[xX][a-fA-F0-9]+  |  [1-9][0-9]*  |  0[0-7]*  )       (?:[uU](ll|LL|l|L)?|(ll|LL|l|L)([uU])?)?)|\
+          (?:(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*\+\-~!*/%\+\-<>=])`r
+          
+#_lexical_operator ::= # intentional dummy orphan rule to contain a lexer rule
+#    r`(?:(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*\+\-~!*/%\+\-<>=])`r
