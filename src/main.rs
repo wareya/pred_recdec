@@ -265,41 +265,42 @@ fn main() {
         {
             let mut data = global.udata.get_mut::<MyData>();
             let data = data.as_mut().unwrap();
-            if let Some(s) = data.typedef_stack.last_mut()
+            let mut found = false;
+            let mut f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
             {
-                let mut found = false;
-                let mut f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
+                let n = &global.g.string_cache_inv[c.text as usize];
+                if c.children.is_none() && &**n == "typedef" { found = true; }
+                if c.children.is_some() && &**n == "type_specifier" { return false; }
+                true
+            };
+            for c in children.iter_mut()
+            {
+                visit_mut(c, &mut f);
+            }
+            
+            if found
+            {
+                //println!("found typedef context to log with");
+                let mut f2 : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
                 {
                     let n = &global.g.string_cache_inv[c.text as usize];
-                    if c.children.is_none() && &**n == "typedef" { found = true; }
+                    if c.children.is_some() && &**n == "identifier" && c.children.is_some()
+                    {
+                        let nj2 = c.children.as_ref().unwrap()[0].text;
+                        
+                        if let Some(s) = data.typedef_stack.last_mut()
+                        {
+                            s.insert(nj2);
+                        }
+                        data.typedef_seen.insert(nj2);
+                        //println!("logged {} as typedef", &c.children.as_ref().unwrap()[0].text);
+                    }
                     if c.children.is_some() && &**n == "type_specifier" { return false; }
                     true
                 };
                 for c in children.iter_mut()
                 {
-                    visit_mut(c, &mut f);
-                }
-                
-                if found
-                {
-                    //println!("found typedef context to log with");
-                    let mut f2 : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
-                    {
-                        let n = &global.g.string_cache_inv[c.text as usize];
-                        if c.children.is_some() && &**n == "identifier" && c.children.is_some()
-                        {
-                            let nj2 = c.children.as_ref().unwrap()[0].text;
-                            s.insert(nj2);
-                            data.typedef_seen.insert(nj2);
-                            //println!("logged {} as typedef", &c.children.as_ref().unwrap()[0].text);
-                        }
-                        if c.children.is_some() && &**n == "type_specifier" { return false; }
-                        true
-                    };
-                    for c in children.iter_mut()
-                    {
-                        visit_mut(c, &mut f2);
-                    }
+                    visit_mut(c, &mut f2);
                 }
             }
             //println!("-------");
@@ -312,24 +313,24 @@ fn main() {
             println!("----");
             let mut data = global.udata.get_mut::<MyData>();
             let data = data.as_mut().unwrap();
-            if let Some(s) = data.enum_stack.last_mut()
+            let mut f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
             {
-                let mut f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
+                let n = &global.g.string_cache_inv[c.text as usize];
+                if c.children.is_some() && &**n == "enumeration_constant" && c.children.is_some()
                 {
-                    let n = &global.g.string_cache_inv[c.text as usize];
-                    if c.children.is_some() && &**n == "enumeration_constant" && c.children.is_some()
+                    let nj2 = c.children.as_ref().unwrap()[0].children.as_ref().unwrap()[0].text;
+                    if let Some(s) = data.enum_stack.last_mut()
                     {
-                        let nj2 = c.children.as_ref().unwrap()[0].children.as_ref().unwrap()[0].text;
                         s.insert(nj2);
-                        data.enum_seen.insert(nj2);
                     }
-                    true
-                };
-                
-                for c in children.iter_mut()
-                {
-                    visit_mut(c, &mut f);
+                    data.enum_seen.insert(nj2);
                 }
+                true
+            };
+            
+            for c in children.iter_mut()
+            {
+                visit_mut(c, &mut f);
             }
             //println!("-------");
             Ok(0)
