@@ -189,4 +189,4 @@ expr0 ::=
 
 TODO:
 
-- $hoist, $skip, $drop, $dropifempty, $pruned
+- $hoist, $skip, $drop, $dropifempty

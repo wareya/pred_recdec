@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+mimalloc = "0.1.48"
 regex = "1.12.2"
 rustc-hash = "2.1.1"
 

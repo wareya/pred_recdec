@@ -1,6 +1,6 @@
 
-__COMMENTS ::= //
-__COMMENT_REGEXES ::= r`(?s)\/\*.*?\*\/`r | r`(?m)#.*?$`r
+__COMMENTS ::= "//" | "#"
+__COMMENT_PAIRS ::= /* */
 __BRACKET_PAIRS ::= { } | ( ) | [ ]
 # only used by the peekres command (not peekr, not regex terminals)
 __RESERVED_WORDS ::=
@@ -269,12 +269,11 @@ designator ::=
 
 primary_expression ::=
     @peekr(0, r`\x22.*\x22`r) string_literal
-    | @guard(is_ident_not_known_enum) identifier
-    | constant
+    | @guard(is_ident_not_known_enum) $become_as identifier
+    | $become constant
 postfix_expression_atom ::=
-    @peekr(0, r`[^(]`r) $become primary_expression
-    | @auto "(" $become postfix_expression_atom_choice
-    | $become primary_expression
+    @auto "(" $become postfix_expression_atom_choice
+    | $become_as primary_expression
 postfix_expression_atom_choice ::=
     @guard(is_type_specifier_start) $become_as struct_lit_expression
     | $become_as primary_expression_2
@@ -297,27 +296,25 @@ postfix_trailer ::=
     | "--"
 postfix_trailer_paren ::=
     @auto ")"
-    | argument_expression_list ")"
+    | $become_as argument_expression_list
 argument_expression_list ::=
     assignment_expression $become argument_expression_list_tail
 argument_expression_list_tail ::=
     @auto "," assignment_expression $become argument_expression_list_tail
-    | #empty
+    | ")" #empty
 unary_expression ::=
     @auto "++" $become unary_expression
     | @auto "--" $become unary_expression
     | @auto "sizeof" $become sizeof_argument
-    | @peekr(0, r`[&*\+\-~!]`r) unary_operator cast_expression
-    | postfix_expression
+    | @peekr(0, r`[&*\+\-~!]`r) R`[&*\+\-~!]`r cast_expression
+    | $become_as postfix_expression
 sizeof_argument ::=
     @auto "(" type_name ")"
-    | $become unary_expression
-unary_operator ::=
-    R`[&*\+\-~!]`r
+    | $become_as unary_expression
 
 cast_expression ::=
     @guard(is_primitive_cast) "(" type_name ")" $become cast_expression
-    | unary_expression
+    | $become_as unary_expression
 
 infix_expression ::=
     cast_expression $become infix_expression_tail
@@ -326,10 +323,10 @@ infix_expression_tail ::=
         \|\||&&|==|>=|<=|!=|>>|<<|\
         \*|\+|\^|\||&|-|/|%|>|<\
     )`r cast_expression $become infix_expression_tail
-    | !hook(fix_infix_precedence) #empty # WARNING: fix_infix_precedence IS NOT ACTUALLY IMPLEMENTED YET!
+    | !hook(fix_infix_precedence) #empty
 
 conditional_expression ::=
-    infix_expression conditional_expression_tail
+    infix_expression $become conditional_expression_tail
 conditional_expression_tail ::=
     @auto "?" expression ":" conditional_expression | #empty
 
@@ -367,12 +364,12 @@ maybe_asm_statement ::=
 
 statement ::=
     @peekr(0, r`__asm|__asm__|asm`r) asm_statement ";"
-    | @guard(is_label) labeled_statement
-    | @peekr(0, r`switch|if`r) selection_statement
-    | @peekr(0, r`while|do|for`r) iteration_statement
-    | @peekr(0, r`goto|continue|break|return`r) jump_statement
-    | @peek(0, "{") compound_statement
-    | expression_statement
+    | @guard(is_label) $become_as labeled_statement
+    | @peekr(0, r`switch|if`r) $become_as selection_statement
+    | @peekr(0, r`while|do|for`r) $become_as iteration_statement
+    | @peekr(0, r`goto|continue|break|return`r) $become_as jump_statement
+    | @peek(0, "{") $become_as compound_statement
+    | $become_as expression_statement
 
 # gcc extension
 asm_statement ::=
@@ -439,8 +436,8 @@ block_item_star ::=
     @peek(0, "}") #empty # FOLLOW set logic
     | block_item $become block_item_star
 block_item ::=
-    @guard(is_declaration_indicator) declaration
-    | statement
+    @guard(is_declaration_indicator) $become_as declaration
+    | $become_as statement
 expression_statement ::=
     @auto ";"
     | expression ";"
@@ -562,7 +559,4 @@ _token_dummy ::=
           (?:[L]?  \x22  (?:[^\x22\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )*\x22)|\
           (?:(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*)|\
           (?:(?:  0[xX][a-fA-F0-9]+  |  [1-9][0-9]*  |  0[0-7]*  )       (?:[uU](ll|LL|l|L)?|(ll|LL|l|L)([uU])?)?)|\
-          (?:(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*\+\-~!*/%\+\-<>=])`r
-          
-#_lexical_operator ::= # intentional dummy orphan rule to contain a lexer rule
-#    r`(?:(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*\+\-~!*/%\+\-<>=])`r
+          (?:(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*/\+\-~!%<>=\^])`r

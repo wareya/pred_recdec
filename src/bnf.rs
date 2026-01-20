@@ -71,6 +71,7 @@ pub struct Grammar {
     pub bracket_pairs : Vec<(String, String)>,
     pub comments : Vec<String>,
     pub comment_pairs : Vec<(String, String)>,
+    pub comment_pairs_nested : Vec<(String, String)>,
     pub comment_regexes : Vec<Regex>,
     pub reserved : Option<Regex>,
 }
@@ -278,7 +279,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     let mut by_name = HashMap::new();
     for (name, _) in input.iter()
     {
-        if matches!(&**name, "__BRACKET_PAIRS" | "__COMMENT_PAIRS" | "__COMMENT_REGEXES" | "__COMMENTS" | "__RESERVED_WORDS") { continue; }
+        if matches!(&**name, "__BRACKET_PAIRS" | "__COMMENT_PAIRS" | "__COMMENT_PAIRS_NESTED" | "__COMMENT_REGEXES" | "__COMMENTS" | "__RESERVED_WORDS") { continue; }
         if by_name.insert(name.clone(), by_name.len()).is_some()
         {
             return Err(format!("Duplicate rule {name}; use alternations (e.g. x ::= a | b), not additional definitions (like x ::= a [...] x ::= b)"));
@@ -293,6 +294,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     
     let mut bracket_pairs = Vec::new();
     let mut comment_pairs = Vec::new();
+    let mut comment_pairs_nested = Vec::new();
     let mut comment_regexes = Vec::new();
     let mut comments = Vec::new();
     
@@ -311,7 +313,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
             reserved = Some(build_literal_regex(&set, true));
             continue;
         }
-        if name == "__BRACKET_PAIRS" || name == "__COMMENT_PAIRS"
+        if name == "__BRACKET_PAIRS" || name == "__COMMENT_PAIRS" || name == "__COMMENT_PAIRS_NESTED"
         {
             for raw_alt in raw_forms
             {
@@ -321,6 +323,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     {
                         if name == "__BRACKET_PAIRS" { bracket_pairs.push((l.clone(), r.clone())); }
                         if name == "__COMMENT_PAIRS" { comment_pairs.push((l.clone(), r.clone())); }
+                        if name == "__COMMENT_PAIRS_NESTED" { comment_pairs_nested.push((l.clone(), r.clone())); }
                     }
                     _ => Err(format!("Alternations of __BRACKET_PAIRS must all contain two bare string items"))?
                 }
@@ -338,9 +341,10 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     let re = Regex::new(&pattern).map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
                     comment_regexes.push(re);
                 }
-                if name == "__COMMENTS" && s.len() >= 1
+                if name == "__COMMENTS" && s.starts_with("\"") && s.ends_with("\"") && s.len() >= 3
                 {
-                    comments.push(s.clone());
+                    let pattern = &s[1..s.len() - 1];
+                    comments.push(pattern.to_string());
                 }
             }
             continue;
@@ -562,7 +566,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     {
         regexes.push(Regex::new(&r).map_err(|e| format!("Invalid regex '{}': {}", r, e))?);
     }
-    Ok(Grammar { points, by_name, literals, regexes, string_cache, string_cache_inv, bracket_pairs, comments, comment_pairs, comment_regexes, reserved })
+    Ok(Grammar { points, by_name, literals, regexes, string_cache, string_cache_inv, bracket_pairs, comments, comment_pairs, comment_regexes, reserved, comment_pairs_nested })
 }
 
 pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
@@ -603,6 +607,7 @@ pub fn tokenize(
 {
     let s_orig = s;
     let mut tokens = Vec::<Token>::new();
+    tokens.reserve(s.len()/16 + 1);
     
     let all_literals_regex = build_literal_regex(&g.literals, false);
     
@@ -621,8 +626,9 @@ pub fn tokenize(
     for (l, r) in &g.bracket_pairs
     {
         let lsc = string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &l);
+        let rsc = string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &r);
         openers.insert(lsc.1);
-        closers.insert(string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &r).1, lsc.1);
+        closers.insert(rsc.1, lsc.1);
         stacks.insert(lsc.1, Vec::<usize>::new());
     }
     
@@ -636,11 +642,11 @@ pub fn tokenize(
     
     'top: while !s.is_empty()
     {
-        if get_char_at_byte(s, 0).is_ascii_whitespace()
+        if get_char_at_byte(s, 0) as u32 <= 0x20
         {
-            while !s.is_empty() && get_char_at_byte(s, 0).is_ascii_whitespace()
+            while !s.is_empty() && get_char_at_byte(s, 0) as u32 <= 0x20
             {
-                s = &s[get_char_at_byte(s, 0).len_utf8()..];
+                s = &s[1..]; // ascii whitespace is always 1 byte long
             }
             if s.is_empty() { break; }
             continue 'top;
@@ -667,7 +673,7 @@ pub fn tokenize(
                     {
                         s = &s[get_char_at_byte(s, 0).len_utf8()..]; // extra skip
                     }
-                    if c.len() > 0
+                    if s.len() > 0
                     {
                         s = &s[get_char_at_byte(s, 0).len_utf8()..];
                     }
@@ -675,8 +681,8 @@ pub fn tokenize(
                 continue 'top;
             }
         }
-        // Comments with nesting
-        for (l, r) in &g.comment_pairs
+        // Pair comments with nesting
+        for (l, r) in &g.comment_pairs_nested
         {
             if s.starts_with(l)
             {
@@ -689,6 +695,20 @@ pub fn tokenize(
                     if s.starts_with(r) { nest -= 1; }
                 }
                 if s.starts_with(r) { s = &s[r.len()..]; }
+                continue 'top;
+            }
+        }
+        // Pair comments without nesting
+        for (l, r) in &g.comment_pairs
+        {
+            if s.starts_with(l)
+            {
+                s = &s[l.len()..];
+                while !s.starts_with(r)
+                {
+                    s = &s[r.len()..];
+                }
+                s = &s[r.len()..];
                 continue 'top;
             }
         }

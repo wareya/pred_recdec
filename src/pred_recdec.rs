@@ -10,8 +10,13 @@ use crate::bnf::*;
 #[derive(Clone, Debug, Default)]
 pub struct ASTNode {
     pub children : Option<Vec<ASTNode>>,
-    pub token_count : u32,
+    pub token_count : u32, // IF POISONED: xor with !0u32 (all one-bits)
     pub text : u32, // index into grammar.string_cache_inv
+}
+
+impl ASTNode {
+    pub fn is_poisoned(&self) -> bool { self.token_count >= 0x80000000 }
+    pub fn get_real_token_count(&self) -> u32 { if self.token_count >= 0x80000000 { self.token_count ^ !0u32 } else { self.token_count } }
 }
 
 // ASTs can be deeply recursive, so we need to avoid destroying them recursively.
@@ -206,15 +211,11 @@ pub fn pred_recdec_parse_impl_recursive(
                         }
                     }
                     let child = child.map_err(|e| format!("In {}: {e}", g_item.name))?;
-                    if child.token_count as i32 >= 0
-                    {
-                        i += child.token_count as usize;
-                    }
-                    else
+                    if child.is_poisoned()
                     {
                         poisoned = true;
-                        i += (child.token_count ^ !0u32) as usize;
                     }
+                    i += child.get_real_token_count() as usize;
                     children.push(child);
                     matched = true;
                 }
@@ -374,8 +375,7 @@ pub fn print_ast_pred_recdec(ast : &ASTNode, string_cache_inv : &Vec<Rc<String>>
     print!("{}", " ".repeat(indent));
     if let Some(c) = &ast.children
     {
-        // if ast.poisoned { println!("{} (POISONED) {{", ast.text); } else
-        //{ println!("{} {{", ast.text); }
+        if ast.is_poisoned() { println!("{} (POISONED) {{", ast.text); } else
         { println!("{} {{", string_cache_inv[ast.text as usize]); }
         for c in c.iter()
         {

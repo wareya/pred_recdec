@@ -1,3 +1,7 @@
+use mimalloc::MiMalloc;
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 mod bnf;
 use bnf::*;
 
@@ -11,6 +15,31 @@ fn main() {
     let start = std::time::Instant::now();
     let grammar_source = std::fs::read_to_string("src/grammar.txt").unwrap();
     let mut g = bnf_to_grammar(&grammar_source).unwrap();
+    
+    let mut precedence_list = vec!(
+        (&["*", "/", "%"][..]),
+        (&["+", "-"]),
+        (&["<<", ">>"]),
+        (&["<", "<=", ">", ">="]),
+        (&["==", "!="]),
+        (&["&"]),  (&["^"]),  (&["|"]),  (&["&&"]),  (&["||"]),
+    );
+    precedence_list.reverse();
+    
+    let mut prec_map = Vec::default();
+    for (i, l) in precedence_list.iter().enumerate()
+    {
+        for s in *l
+        {
+            let index : u32 = string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, *s).1;
+            if index as usize >= prec_map.len()
+            {
+                prec_map.resize(index as usize + 1, 0);
+            }
+            prec_map[index as usize] = i as u32;
+        }
+    }
+    
     println!("Boot time: {:?}", start.elapsed());
     
     let start = std::time::Instant::now();
@@ -359,10 +388,44 @@ fn main() {
     ));
     
     hooks.insert("fix_infix_precedence".to_string(),
-        Rc::new(|_global : &mut PrdGlobal, tokens : &[Token], mut i : usize, children : &mut Vec<ASTNode>|
+        Rc::new(move |_global : &mut PrdGlobal, _tokens : &[Token], mut _i : usize, children : &mut Vec<ASTNode>|
         {
             if children.len() <= 3 { return Ok(0); }
-            // TODO FIXME URGENT
+            let default_text = *_global.g.string_cache.get("infix_expression").unwrap();
+            
+            fn parse_expression_impl(default_text : u32, prec_map : &[u32], items : &mut Vec<ASTNode>, mut lhs : ASTNode, min_precedence : u32) -> ASTNode
+            {
+                while items.len() > 1 && prec_map[items.last().unwrap().text as usize] >= min_precedence
+                {
+                    let op = items.pop().unwrap();
+                    let mut rhs = items.pop().unwrap();
+                    while items.len() > 1 && prec_map[items.last().unwrap().text as usize] > prec_map[op.text as usize]
+                    {
+                        rhs = parse_expression_impl(default_text, prec_map, items, rhs, prec_map[op.text as usize] + 1);
+                    }
+                    if lhs.children.is_none() || lhs.children.as_ref().unwrap().len() == 1
+                    {
+                        let new_children_list = vec!(lhs, op, rhs);
+                        lhs = ASTNode { text : default_text, token_count : new_children_list.iter().map(|x| x.token_count).sum(), children : Some(new_children_list), };
+                    }
+                    else if let Some(c) = lhs.children.as_mut()
+                    {
+                        c.push(op);
+                        c.push(rhs);
+                    }
+                }
+                lhs
+            }
+            fn parse_expression(default_text : u32, prec_map : &[u32], items : &mut Vec<ASTNode>) -> ASTNode
+            {
+                items.reverse();
+                let n = items.pop().unwrap();
+                parse_expression_impl(default_text, prec_map, items, n, 0)
+            }
+            
+            let new_node = parse_expression(default_text, &prec_map, children);
+            std::mem::swap(children, &mut new_node.children.unwrap());
+            
             Ok(0)
         }
     ));
