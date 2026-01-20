@@ -9,9 +9,17 @@ mod pred_recdec;
 #[allow(unused)]
 use pred_recdec::*;
 
-
-// Removed the main function as it was extraneous.
 fn main() {
+    
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() == 1
+    {
+        eprintln!("usage: ./pred_recdec testinput.c");
+        return;
+    }
+    let input_fname = args[1].to_string();
+    
     let start = std::time::Instant::now();
     let grammar_source = std::fs::read_to_string("src/grammar.txt").unwrap();
     let mut g = bnf_to_grammar(&grammar_source).unwrap();
@@ -43,10 +51,7 @@ fn main() {
     println!("Boot time: {:?}", start.elapsed());
     
     let start = std::time::Instant::now();
-    let test_source = std::fs::read_to_string("src/test_pp_gcc.c").unwrap();
-    //let test_source = std::fs::read_to_string("src/test_pp_clang.c").unwrap();
-    //let test_source = std::fs::read_to_string("src/eltest_pp.c").unwrap();
-    //let test_source = std::fs::read_to_string("src/test_filli.c").unwrap();
+    let test_source = std::fs::read_to_string(input_fname).unwrap();
     println!("Source text load time: {:?}", start.elapsed());
     
     let start = std::time::Instant::now();

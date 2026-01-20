@@ -704,9 +704,9 @@ pub fn tokenize(
             if s.starts_with(l)
             {
                 s = &s[l.len()..];
-                while !s.starts_with(r)
+                while s.len() > 0 && !s.starts_with(r)
                 {
-                    s = &s[r.len()..];
+                    s = &s[get_char_at_byte(s, 0).len_utf8()..];
                 }
                 s = &s[r.len()..];
                 continue 'top;

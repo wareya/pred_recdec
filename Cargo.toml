@@ -19,3 +19,6 @@ correctness = "deny"
 opt-level = 3
 debug = true
 #lto = "fat"
+
+[features]
+parse_trace = []

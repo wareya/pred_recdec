@@ -71,7 +71,8 @@ pub struct PrdGlobal<'a> {
 
 pub fn pred_recdec_parse_impl_recursive(
     global : &mut PrdGlobal,
-    gp_id : usize, tokens : &[Token], token_start : usize
+    gp_id : usize, tokens : &[Token], token_start : usize,
+    #[cfg(feature = "parse_trace")] depth : usize
 ) -> Result<ASTNode, String>
 {
     let mut g_item = &global.g.points[gp_id];
@@ -83,7 +84,7 @@ pub fn pred_recdec_parse_impl_recursive(
     let mut poisoned = false;
     let mut pruned = false;
     
-    //println!("entered {} at {i}", global.g.string_cache_inv[chosen_name_id as usize]);
+    #[cfg(feature = "parse_trace")] { println!("entered {} at {i}, depth {depth}", global.g.string_cache_inv[chosen_name_id as usize]); }
     
     // Structured this way for the sake of $become
     // 1) We can't use an iterator because then we can't go back to alternation 0.
@@ -175,6 +176,8 @@ pub fn pred_recdec_parse_impl_recursive(
         
         if !accepted { continue; }
         
+        #[cfg(feature = "parse_trace")] { println!("chose variant {}", alt_id-1); }
+        
         if children.capacity() == 0
         {
             children.reserve_exact(alt.matching_terms.len());
@@ -188,7 +191,9 @@ pub fn pred_recdec_parse_impl_recursive(
             {
                 MatchingTerm::Rule(id) =>
                 {
-                    let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, i);
+                    let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, i,
+                        #[cfg(feature = "parse_trace")] depth
+                    );
                     child = std::hint::black_box(child);
                     if child.is_err() && global.g.points[*id].recover.is_some()
                     {
@@ -257,7 +262,7 @@ pub fn pred_recdec_parse_impl_recursive(
                             if let Some(MatchingTerm::Rule(id)) = alt.matching_terms.get(term_idx + 1)
                             {
                                 g_item = &global.g.points[*id];
-                                //println!("became {} at {i}", g_item.name);
+                                #[cfg(feature = "parse_trace")] { println!("became {} at {i}, depth {depth}", g_item.name); }
                                 alt_id = 0;
                                 if matches!(d, MatchDirective::BecomeAs)
                                 {
@@ -314,7 +319,7 @@ pub fn pred_recdec_parse_impl_recursive(
             term_idx += 1;
         }
         
-        //println!("accepted {} from {token_start} to {i}", global.g.string_cache_inv[chosen_name_id as usize]);
+        #[cfg(feature = "parse_trace")] { println!("accepted {} from {token_start} to {i}, depth {depth}", global.g.string_cache_inv[chosen_name_id as usize]); }
         let mut token_count = (i - token_start) as u32;
         if poisoned
         {
@@ -365,7 +370,9 @@ pub fn pred_recdec_parse(
         let _ = f(&mut global, tokens, 0, &mut vec!());
     }
     
-    pred_recdec_parse_impl_recursive(&mut global, *gp_id, tokens, 0)
+    pred_recdec_parse_impl_recursive(&mut global, *gp_id, tokens, 0,
+        #[cfg(feature = "parse_trace")] 0, // depth
+    )
 }
 
 
