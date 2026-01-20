@@ -83,7 +83,7 @@ pub fn pred_recdec_parse_impl_recursive(
     let mut poisoned = false;
     let mut pruned = false;
     
-    //println!("entered {chosen_name} at {i}");
+    //println!("entered {} at {i}", global.g.string_cache_inv[chosen_name_id as usize]);
     
     // Structured this way for the sake of $become
     // 1) We can't use an iterator because then we can't go back to alternation 0.
@@ -258,7 +258,6 @@ pub fn pred_recdec_parse_impl_recursive(
                             {
                                 g_item = &global.g.points[*id];
                                 //println!("became {} at {i}", g_item.name);
-                                //println!("becoming {} from {}", g_item.name, chosen_name);
                                 alt_id = 0;
                                 if matches!(d, MatchDirective::BecomeAs)
                                 {
@@ -310,12 +309,12 @@ pub fn pred_recdec_parse_impl_recursive(
             }
             if !matched
             {
-                Err(format!("Failed to match token at {i} in rule {} alt {alt_id}. Token is `{:?}`. Rule is {:?}", global.g.string_cache_inv[chosen_name_id as usize], tokens.get(i).map(|x| x.text.clone()), term))?
+                Err(format!("Failed to match token at {i} in rule {} alt {alt_id}. Token is `{:?}`.\n{:?}", global.g.string_cache_inv[chosen_name_id as usize], tokens.get(i).map(|x| x.text.clone()), tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()))?
             }
             term_idx += 1;
         }
         
-        //println!("accepted {chosen_name} from {token_start} to {i}");
+        //println!("accepted {} from {token_start} to {i}", global.g.string_cache_inv[chosen_name_id as usize]);
         let mut token_count = (i - token_start) as u32;
         if poisoned
         {
@@ -328,7 +327,8 @@ pub fn pred_recdec_parse_impl_recursive(
         });
     }
     
-    Err(format!("Failed to match rule {} at token position {token_start}", global.g.string_cache_inv[chosen_name_id as usize]))
+    Err(format!("Failed to match rule {} at token position {token_start}\n{:?}", global.g.string_cache_inv[chosen_name_id as usize],
+        tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()))
 }
 
 pub fn visit_mut(n : &mut ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)

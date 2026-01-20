@@ -43,9 +43,10 @@ fn main() {
     println!("Boot time: {:?}", start.elapsed());
     
     let start = std::time::Instant::now();
-    //let test_source = std::fs::read_to_string("src/test_pp_gcc.c").unwrap();
+    let test_source = std::fs::read_to_string("src/test_pp_gcc.c").unwrap();
     //let test_source = std::fs::read_to_string("src/test_pp_clang.c").unwrap();
-    let test_source = std::fs::read_to_string("src/eltest_pp.c").unwrap();
+    //let test_source = std::fs::read_to_string("src/eltest_pp.c").unwrap();
+    //let test_source = std::fs::read_to_string("src/test_filli.c").unwrap();
     println!("Source text load time: {:?}", start.elapsed());
     
     let start = std::time::Instant::now();
@@ -82,7 +83,7 @@ fn main() {
         {
             let nj = &tokens[i].text;
             let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(regex::Regex::new(
-                r#"(?x)\A(?:typeof|__typeof__|void|__attribute__|__extension__
+                r#"(?x)\A(?:typeof|__typeof__|void|__extension__
                 |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex
                 |enum|struct|union)\z"#
             ).unwrap(), None));
@@ -121,7 +122,7 @@ fn main() {
             {
                 let nj = &tokens[i].text;
                 let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new(regex::Regex::new(
-                    r#"(?x)\A(?:typeof|__typeof__|typedef|extern|__attribute__|__extension__
+                    r#"(?x)\A(?:typeof|__typeof__|typedef|extern|__extension__
                     |__builtin_va_list|static|auto|register|const|restrict
                     |__restrict__|volatile|__volatile__|__inline__|__inline|inline|void|char|short
                     |int|long|float|double|signed|unsigned|_Bool|_Complex|enum|struct|union)\z"#
@@ -183,6 +184,7 @@ fn main() {
                 {
                     if !matches!(f(global, tokens, i+1), GuardResult::Accept)
                     {
+                        //println!("rejecting cast at {i} (type specifier check failed)");
                         return GuardResult::Reject;
                     }
                     let i2 = i.strict_add_signed(tokens[i].pair);
@@ -192,12 +194,15 @@ fn main() {
                         let n2 = &global.g.string_cache_inv[tokens[i3].text as usize];
                         if &**n2 == "{"
                         {
+                            //println!("rejecting cast at {i} (it's a struct literal)");
                             return GuardResult::Reject;
                         }
                     }
+                    //println!("accepting cast at {i}");
                     return GuardResult::Accept;
                 }
             }
+            //println!("rejecting cast at {i}");
             GuardResult::Reject
         }
     ));
@@ -322,7 +327,7 @@ fn main() {
                             s.insert(nj2);
                         }
                         data.typedef_seen.insert(nj2);
-                        //println!("logged {} as typedef", &c.children.as_ref().unwrap()[0].text);
+                        //println!("logged {} as typedef", global.g.string_cache_inv[c.children.as_ref().unwrap()[0].text as usize]);
                     }
                     if c.children.is_some() && &**n == "type_specifier" { return false; }
                     true
@@ -339,7 +344,7 @@ fn main() {
     hooks.insert("enums_log".to_string(),
         Rc::new(|global : &mut PrdGlobal, _tokens : &[Token], _i : usize, children : &mut Vec<ASTNode>|
         {
-            println!("----");
+            //println!("----");
             let mut data = global.udata.get_mut::<MyData>();
             let data = data.as_mut().unwrap();
             let mut f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|

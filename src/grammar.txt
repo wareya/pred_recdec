@@ -17,11 +17,10 @@ declaration_specifiers_star ::=
     @guard(is_declaration_indicator) declaration_specifier $become declaration_specifiers_star
     | #empty
 declaration_specifier ::=
-    @peekr(0, r`typedef|extern|static|__extension__|auto|register`r) storage_class_specifier
-    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier
-    | @peekr(0, r`inline|__inline__|__inline`r) function_specifier
-    | @peek(0, "__attribute__") attribute
-    | type_specifier
+    @peekr(0, r`typedef|extern|static|__extension__|auto|register`r) storage_class_specifier $become attribute_list
+    | @peekr(0, r`const|restrict|__restrict__|volatile`r) type_qualifier $become attribute_list
+    | @peekr(0, r`inline|__inline__|__inline`r) function_specifier $become attribute_list
+    | type_specifier $become attribute_list
 
 # gcc extension
 attribute_list ::=
@@ -44,11 +43,11 @@ typeof_specifier ::=
 struct_or_union_specifier ::=
     struct_or_union $become struct_or_union_specifier_next
 struct_or_union_specifier_next ::=
-    @peek(0, "__attribute__") $become struct_or_union_specifier_info
+    @peek(0, "__attribute__") attribute_list $become struct_or_union_specifier_info
     | $become struct_or_union_specifier_info
 struct_or_union_specifier_info ::=
     @auto "{" struct_declaration_list "}"
-    | identifier $become struct_or_union_specifier_info2
+    | identifier attribute_list $become struct_or_union_specifier_info2
 struct_or_union_specifier_info2 ::=
     @auto "{" struct_declaration_list "}" | #empty
 
@@ -146,7 +145,7 @@ parameter_declarator ::=
     | #empty (no variable name)
 parameter_declarator2 ::=
     @peekr(0, r`\(|\[`r) NA_direct_abstract_declarator
-    | @peekr(0, r`[^,)]*`r) direct_declarator maybe_attribute_list
+    | @peekr(0, r`[^,)]*`r) direct_declarator attribute_list
     | #empty (no variable name)
 
 type_name ::=
@@ -155,18 +154,12 @@ abstract_declarator_maybe ::=
     @peekr(0, r`\(|\[|\*`r) abstract_declarator
     | #empty
 
-
-maybe_attribute_list ::=
-    @peek(0, "__attribute__") attribute_list
-    | #empty
-
 declarator ::=
-    @peek(0, "*") pointer direct_declarator $become maybe_attribute_list
-    | direct_declarator $become maybe_attribute_list
+    @peek(0, "*") pointer direct_declarator $become attribute_list
+    | direct_declarator $become attribute_list
 direct_declarator ::=
     @auto "(" attribute_list declarator ")" direct_declarator_corelist
-    | @peek(0, "__attribute__") attribute_list identifier direct_declarator_corelist
-    | identifier direct_declarator_corelist
+    | attribute_list identifier direct_declarator_corelist
 
 direct_declarator_core ::=
     @auto "[" any_direct_declarator_core_sq
@@ -186,7 +179,7 @@ direct_abstract_declarator_core ::=
 direct_abstract_declarator_core_p ::=
     @auto ")"
     | @auto "..." ")"
-    | @guard(is_declaration_indicator) parameter_type_list ")"
+    | parameter_type_list ")"
     # Note the lack of identifier_list rule.
 direct_abstract_declarator_corelist ::=
     @peekr(0, r`\[|\(`r) direct_abstract_declarator_core direct_abstract_declarator_corelist
@@ -200,12 +193,12 @@ direct_abstract_declarator_maybe ::=
     @peekr(0, r`\(|\[`r) direct_abstract_declarator
     | #empty
 direct_abstract_declarator ::=
-    abstract_declarator_wrapped_and_maybe direct_abstract_declarator_corelist
+    attribute_list abstract_declarator_wrapped_and_maybe direct_abstract_declarator_corelist
 abstract_declarator_wrapped_and_maybe ::=
     @peek(0, "(") $become abstract_declarator_wrapped_and_maybe2
     | #empty
 abstract_declarator_wrapped_and_maybe2 ::=
-    @peekr(1, r`\*|\(|\[`r) "(" attribute_list abstract_declarator ")"
+    @peekr(1, r`\*|\(|\[|__attribute__`r) "(" attribute_list abstract_declarator ")"
     | #empty
 
 # "name allowed" variants
@@ -216,7 +209,7 @@ NA_direct_abstract_declarator_maybe ::=
     @peekr(0, r`\(|\[`r) NA_direct_abstract_declarator
     | #empty
 NA_direct_abstract_declarator ::=
-    NA_abstract_declarator_wrapped_and_maybe direct_abstract_declarator_corelist
+    attribute_list NA_abstract_declarator_wrapped_and_maybe direct_abstract_declarator_corelist
     # non-empty identifier_list terms are forbidden outside of function definitions
     # AND: function definitions cannot be abstract
     # THEREFORE: it's safe to use direct_abstract_declarator_corelist instead of direct_declarator_corelist
@@ -224,7 +217,7 @@ NA_abstract_declarator_wrapped_and_maybe ::=
     @peek(0, "(") $become NA_abstract_declarator_wrapped_and_maybe2
     | #empty
 NA_abstract_declarator_wrapped_and_maybe2 ::=
-    @peekr(1, r`\*|\(|\[`r) "(" attribute_list NA_abstract_declarator ")"
+    @peekr(1, r`\*|\(|\[|__attribute__`r) "(" attribute_list NA_abstract_declarator ")"
     | #empty
 
 
@@ -258,7 +251,8 @@ designated_initializer ::=
     @peekr(0, r`[\[.]`r) designation initializer
     | initializer
 initializer_list ::=
-    designated_initializer $become initializer_list_tail
+    @peek(0, "}") #empty # C23 extension: empty initializer lists
+    | designated_initializer $become initializer_list_tail
 initializer_list_tail ::=
     @auto "," designated_initializer $become initializer_list_tail
     | #empty
@@ -370,6 +364,10 @@ maybe_asm_statement ::=
     | #empty
 
 statement ::=
+    @peek(0, "__attribute__") attribute_list $become core_statement
+    | $become core_statement
+
+core_statement ::=
     @peekr(0, r`__asm|__asm__|asm`r) asm_statement ";"
     | @guard(is_label) $become_as labeled_statement
     | @peekr(0, r`switch|if`r) $become_as selection_statement
@@ -498,7 +496,7 @@ declaration_tail ::=
 # Let's do something tractible instead.
 
 external_declaration ::=
-    declaration_specifiers $become extdec_chooser
+    attribute_list declaration_specifiers $become extdec_chooser
 
 extdec_chooser ::=
     @peek(0, ";") $become_as empty_declaration
@@ -550,6 +548,12 @@ enumeration_constant ::=
     identifier
 
 string_literal ::=
+    string_literal_core $become string_literal_star
+string_literal_star ::=
+    @peekr(0, r`(?x)  [L]?  \x22  (?:[^\x22\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )*\x22`r)
+    string_literal_core $become string_literal_star
+    | #empty
+string_literal_core ::=
     R`(?x)  [L]?  \x22  (?:[^\x22\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )*\x22`r
 
 identifier_maybe ::=
@@ -565,5 +569,5 @@ _token_dummy ::=
           (?:[L]?  \x27  (?:[^\x27\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )+\x27)|\
           (?:[L]?  \x22  (?:[^\x22\\\n]  |  \\[\x27\x22\\abfnrtv?]  |  \\[0-7]{1,3}  |  \\x[0-9a-fA-F]+  |  (?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})  )*\x22)|\
           (?:(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*)|\
-          (?:(?:  0[xX][a-fA-F0-9]+  |  [1-9][0-9]*  |  0[0-7]*  )       (?:[uU](ll|LL|l|L)?|(ll|LL|l|L)([uU])?)?)|\
-          (?:(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*/\+\-~!%<>=\^])`r
+          (?:(?:  0[xX][a-fA-F0-9]+  |  [1-9][0-9]*  |  0[0-7]*  )       (?:[uU](?:ll|LL|l|L)?|(?:ll|LL|l|L)([uU])?)?)|\
+          (?:(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*/\+\-~!%<>=\^\|])`r
