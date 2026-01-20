@@ -42,7 +42,10 @@ type_qualifier ::=
 typeof_specifier ::=
     R`typeof|__typeof__`r "(" !hook(many_balanced) ")"
 struct_or_union_specifier ::=
-    struct_or_union attribute_list $become struct_or_union_specifier_info
+    struct_or_union $become struct_or_union_specifier_next
+struct_or_union_specifier_next ::=
+    @peek(0, "__attribute__") $become struct_or_union_specifier_info
+    | $become struct_or_union_specifier_info
 struct_or_union_specifier_info ::=
     @auto "{" struct_declaration_list "}"
     | identifier $become struct_or_union_specifier_info2
@@ -143,7 +146,7 @@ parameter_declarator ::=
     | #empty (no variable name)
 parameter_declarator2 ::=
     @peekr(0, r`\(|\[`r) NA_direct_abstract_declarator
-    | @peekr(0, r`[^,)]*`r) direct_declarator attribute_list
+    | @peekr(0, r`[^,)]*`r) direct_declarator maybe_attribute_list
     | #empty (no variable name)
 
 type_name ::=
@@ -153,13 +156,17 @@ abstract_declarator_maybe ::=
     | #empty
 
 
+maybe_attribute_list ::=
+    @peek(0, "__attribute__") attribute_list
+    | #empty
 
 declarator ::=
-    @peek(0, "*") pointer direct_declarator attribute_list
-    | direct_declarator attribute_list
+    @peek(0, "*") pointer direct_declarator $become maybe_attribute_list
+    | direct_declarator $become maybe_attribute_list
 direct_declarator ::=
     @auto "(" attribute_list declarator ")" direct_declarator_corelist
-    | attribute_list identifier direct_declarator_corelist
+    | @peek(0, "__attribute__") attribute_list identifier direct_declarator_corelist
+    | identifier direct_declarator_corelist
 
 direct_declarator_core ::=
     @auto "[" any_direct_declarator_core_sq
@@ -289,7 +296,7 @@ postfix_trailer_star ::=
     | #empty
 postfix_trailer ::=
     @auto "[" expression "]"
-    | @peek(0, "(") $pruned "(" $become postfix_trailer_paren
+    | @auto "(" $become postfix_trailer_paren
     | @auto "." identifier
     | @auto "->" identifier
     | @auto "++"
@@ -306,7 +313,7 @@ unary_expression ::=
     @auto "++" $become unary_expression
     | @auto "--" $become unary_expression
     | @auto "sizeof" $become sizeof_argument
-    | @peekr(0, r`[&*\+\-~!]`r) R`[&*\+\-~!]`r cast_expression
+    | @auto R`[&*\+\-~!]`r cast_expression
     | $become_as postfix_expression
 sizeof_argument ::=
     @auto "(" type_name ")"
@@ -426,7 +433,7 @@ compound_statement ::=
     @peek(0, "__attribute__") attribute $become compound_statement
     | "{" !hook(typedef_stack_push) $become compound_statement_trail !hook(typedef_stack_pop)
 attribute ::=
-    "__attribute__" "(" "(" !hook(many_balanced) ")" ")"
+    $pruned "__attribute__" "(" "(" !hook(many_balanced) ")" ")"
 compound_statement_trail ::=
     @auto "}"
     | block_item_list "}"
@@ -442,15 +449,15 @@ expression_statement ::=
     @auto ";"
     | expression ";"
 selection_statement ::=
-    @auto "switch" "(" expression ")" statement
-    | "if" "(" expression ")" statement $become else_maybe
+    @auto "switch" $pruned "(" expression ")" statement
+    | "if" $pruned "(" expression ")" statement $become else_maybe
 else_maybe ::=
     @auto "else" statement
     | #empty
 iteration_statement ::=
-    @auto "while" "(" expression ")" statement
-    | @auto "do" statement "while" "(" expression ")" ";"
-    | "for" "(" forloop_head_contents ")" statement
+    @auto "while" $pruned "(" expression ")" statement
+    | @auto "do" $pruned statement "while" "(" expression ")" ";"
+    | "for" $pruned "(" forloop_head_contents ")" statement
 forloop_head_contents ::=
     @auto ";" $become forloop_head_contents2
     | @guard(is_declaration_indicator) declaration $become forloop_head_contents2
@@ -462,13 +469,13 @@ forloop_head_contents3 ::=
     @peek(0, ")") #empty # FOLLOW set logic
     | expression
 jump_statement ::=
-    @auto "goto" identifier ";"
-    | @auto "continue" ";"
-    | @auto "break" ";"
+    @auto "goto" identifier $pruned ";"
+    | @auto "continue" $pruned ";"
+    | @auto "break" $pruned ";"
     | "return" $become return_operand
 return_operand ::=
     @auto ";"
-    | expression ";"
+    | expression $pruned ";"
 translation_unit ::=
     external_declaration $become external_declaration_star
 external_declaration_star ::=
