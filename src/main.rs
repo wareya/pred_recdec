@@ -163,6 +163,8 @@ fn main() {
             if i + 1 < tokens.len()
             {
                 let nj = &tokens[i].text;
+                let n = &global.g.string_cache_inv[*nj as usize];
+                if &**n == "case" { return GuardResult::Accept; }
                 let nj2 = &tokens[i+1].text;
                 let n2 = &global.g.string_cache_inv[*nj2 as usize];
                 let r = global.udata_r.entry(648245613).or_insert_with(|| RegexCacher::new(regex::Regex::new(

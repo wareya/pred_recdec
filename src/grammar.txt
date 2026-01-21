@@ -496,7 +496,8 @@ declaration_tail ::=
 # Let's do something tractible instead.
 
 external_declaration ::=
-    attribute_list declaration_specifiers $become extdec_chooser
+    @peek(0, "_Static_assert") static_assert
+    | attribute_list declaration_specifiers $become extdec_chooser
 
 extdec_chooser ::=
     @peek(0, ";") $become_as empty_declaration
@@ -518,6 +519,8 @@ function_definition ::=
     attribute_list $become function_definition_cont
 
 
+static_assert ::=
+    "_Static_assert" "(" !hook(many_balanced) ")" ";"
 
 
 init_declarator_list ::=
