@@ -314,7 +314,10 @@ pub fn pred_recdec_parse_impl_recursive(
             }
             if !matched
             {
-                Err(format!("Failed to match token at {i} in rule {} alt {alt_id}. Token is `{:?}`.\n{:?}", global.g.string_cache_inv[chosen_name_id as usize], tokens.get(i).map(|x| x.text.clone()), tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()))?
+                Err(format!("Failed to match token at {i} in rule {} alt {alt_id}. Token is `{:?}`.\n{:?}",
+                    global.g.string_cache_inv[chosen_name_id as usize],
+                    tokens.get(i).map(|x| global.g.string_cache_inv[x.text as usize].clone()),
+                    tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()))?
             }
             term_idx += 1;
         }

@@ -91,7 +91,7 @@ fn main() {
             let n = &global.g.string_cache_inv[*nj as usize];
             let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(regex::Regex::new(
                 r#"(?x)\A(?:typeof|__typeof__|void|__extension__
-                |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary
+                |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|const|volatile|__volatile__
                 |enum|struct|union)\z"#
             ).unwrap(), None));
             if r.is_match_2(*nj, &global.g.string_cache_inv)
