@@ -73,12 +73,13 @@ fn main() {
     let mut guards = HashMap::<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], _) -> GuardResult>>::default();
     
     // FIXME: Okay using TypeId for this is actually a really bad idea, change it to ints.
-    #[derive(Default)]
+    #[derive(Default, Debug)]
     struct MyData {
         typedef_stack : Vec<HashSet<u32>>,
         typedef_seen : HashSet<u32>,
         enum_stack : Vec<HashSet<u32>>,
         enum_seen : HashSet<u32>,
+        variable_stack : Vec<HashSet<u32>>,
     }
     
     let type_specifier_checker : Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>
@@ -89,7 +90,7 @@ fn main() {
             let nj = &tokens[i].text;
             let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(regex::Regex::new(
                 r#"(?x)\A(?:typeof|__typeof__|void|__extension__
-                |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex
+                |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary
                 |enum|struct|union)\z"#
             ).unwrap(), None));
             if r.is_match_2(*nj, &global.g.string_cache_inv)
@@ -102,13 +103,17 @@ fn main() {
             let data = data.as_ref().unwrap();
             if data.typedef_seen.contains(nj)
             {
-                for s in data.typedef_stack.iter()
+                for i in (0..data.typedef_stack.len()).rev()
                 {
-                    //println!("? checking {n} as a typedef (type specifier)");
-                    if s.contains(nj)
+                    //println!("? checking {n} as a typedef");
+                    if data.typedef_stack[i].contains(nj)
                     {
-                        //println!("!!!! accepting {n} as a typedef (type specifier)");
+                        //println!("!!!! accepting {n} as a typedef");
                         return GuardResult::Accept;
+                    }
+                    if data.variable_stack[i].contains(nj)
+                    {
+                        return GuardResult::Reject;
                     }
                 }
             }
@@ -126,11 +131,12 @@ fn main() {
             if i < tokens.len()
             {
                 let nj = &tokens[i].text;
+                //let n = &global.g.string_cache_inv[*nj as usize];
                 let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new(regex::Regex::new(
                     r#"(?x)\A(?:typeof|__typeof__|typedef|extern|__extension__
                     |__builtin_va_list|static|auto|register|const|restrict
                     |__restrict__|volatile|__volatile__|__inline__|__inline|inline|void|char|short
-                    |int|long|float|double|signed|unsigned|_Bool|_Complex|enum|struct|union)\z"#
+                    |int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|enum|struct|union)\z"#
                 ).unwrap(), None));
                 if r.is_match_2(*nj, &global.g.string_cache_inv)
                 {
@@ -140,15 +146,21 @@ fn main() {
                 // FIXME: TODO: add an "ever seen set" optimization here too (like enums)
                 let data = global.udata.get::<MyData>();
                 let data = data.as_ref().unwrap();
+                //println!("? checking {n} as ever being a typedef");
                 if data.typedef_seen.contains(nj)
                 {
-                    for s in data.typedef_stack.iter()
+                    //println!("? yep");
+                    for i in (0..data.typedef_stack.len()).rev()
                     {
                         //println!("? checking {n} as a typedef");
-                        if s.contains(nj)
+                        if data.typedef_stack[i].contains(nj)
                         {
                             //println!("!!!! accepting {n} as a typedef");
                             return GuardResult::Accept;
+                        }
+                        if data.variable_stack[i].contains(nj)
+                        {
+                            return GuardResult::Reject;
                         }
                     }
                 }
@@ -273,28 +285,31 @@ fn main() {
         {
             let mut data = MyData::default();
             data.typedef_stack.push(<_>::default());
+            data.variable_stack.push(<_>::default());
             data.enum_stack.push(<_>::default());
             global.udata.insert(data);
             Ok(0)
         }
     ));
     
-    hooks.insert("typedef_stack_push".to_string(),
+    hooks.insert("scope_push".to_string(),
         Rc::new(|global : &mut PrdGlobal, _tokens : &[Token], _i : usize, _children : &mut Vec<ASTNode>|
         {
             let mut data = global.udata.get_mut::<MyData>();
             let data = data.as_mut().unwrap();
             data.typedef_stack.push(<_>::default());
+            data.variable_stack.push(<_>::default());
             data.enum_stack.push(<_>::default());
             Ok(0)
         }
     ));
-    hooks.insert("typedef_stack_pop".to_string(),
+    hooks.insert("scope_pop".to_string(),
         Rc::new(|global : &mut PrdGlobal, _tokens : &[Token], _i : usize, _children : &mut Vec<ASTNode>|
         {
             let mut data = global.udata.get_mut::<MyData>();
             let data = data.as_mut().unwrap();
             data.typedef_stack.pop();
+            data.variable_stack.pop();
             data.enum_stack.pop();
             Ok(0)
         }
@@ -306,43 +321,47 @@ fn main() {
         {
             let mut data = global.udata.get_mut::<MyData>();
             let data = data.as_mut().unwrap();
-            let mut found = false;
-            let mut f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
+            let mut is_typedef = false;
+            let f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
             {
                 let n = &global.g.string_cache_inv[c.text as usize];
-                if c.children.is_none() && &**n == "typedef" { found = true; }
-                if c.children.is_some() && &**n == "type_specifier" { return false; }
+                if c.children.is_none() && &**n == "typedef" { is_typedef = true; }
+                if c.children.is_some() && matches!(&***n, "parameter_type_list" | "struct_or_union_specifier") { return false; }
                 true
             };
             for c in children.iter_mut()
             {
-                visit_mut(c, &mut f);
+                visit_ast(c, f);
+                //print_ast_pred_recdec(c, &global.g.string_cache_inv, 0);
             }
             
-            if found
+            //println!("looking for typedef storeability at {_i}");
+            //println!("found typedef context to log with");
+            let f2 : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
             {
-                //println!("found typedef context to log with");
-                let mut f2 : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
+                let n = &global.g.string_cache_inv[c.text as usize];
+                if c.children.is_some() && &**n == "identifier"
                 {
-                    let n = &global.g.string_cache_inv[c.text as usize];
-                    if c.children.is_some() && &**n == "identifier" && c.children.is_some()
+                    let nj2 = c.children.as_ref().unwrap()[0].text;
+                    
+                    
+                    if is_typedef
                     {
-                        let nj2 = c.children.as_ref().unwrap()[0].text;
-                        
-                        if let Some(s) = data.typedef_stack.last_mut()
-                        {
-                            s.insert(nj2);
-                        }
+                        data.typedef_stack.last_mut().unwrap().insert(nj2);
                         data.typedef_seen.insert(nj2);
-                        //println!("logged {} as typedef", global.g.string_cache_inv[c.children.as_ref().unwrap()[0].text as usize]);
                     }
-                    if c.children.is_some() && &**n == "type_specifier" { return false; }
-                    true
-                };
-                for c in children.iter_mut()
-                {
-                    visit_mut(c, &mut f2);
+                    else
+                    {
+                        data.variable_stack.last_mut().unwrap().insert(nj2);
+                    }
+                    //println!("logged {} as typedef", global.g.string_cache_inv[c.children.as_ref().unwrap()[0].text as usize]);
                 }
+                if c.children.is_some() && matches!(&***n, "parameter_type_list" | "struct_or_union_specifier") { return false; }
+                true
+            };
+            for c in children.iter_mut()
+            {
+                visit_ast(c, f2);
             }
             //println!("-------");
             Ok(0)
@@ -354,10 +373,10 @@ fn main() {
             //println!("----");
             let mut data = global.udata.get_mut::<MyData>();
             let data = data.as_mut().unwrap();
-            let mut f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
+            let f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
             {
                 let n = &global.g.string_cache_inv[c.text as usize];
-                if c.children.is_some() && &**n == "enumeration_constant" && c.children.is_some()
+                if c.children.is_some() && &**n == "enumeration_constant"
                 {
                     let nj2 = c.children.as_ref().unwrap()[0].children.as_ref().unwrap()[0].text;
                     if let Some(s) = data.enum_stack.last_mut()
@@ -371,7 +390,7 @@ fn main() {
             
             for c in children.iter_mut()
             {
-                visit_mut(c, &mut f);
+                visit_ast(c, f);
             }
             //println!("-------");
             Ok(0)
@@ -442,11 +461,61 @@ fn main() {
         }
     ));
     
+    hooks.insert("entered_function".to_string(),
+        Rc::new(move |global : &mut PrdGlobal, _tokens : &[Token], mut _i : usize, children : &mut Vec<ASTNode>|
+        {
+            let mut data = global.udata.get_mut::<MyData>();
+            let data = data.as_mut().unwrap();
+            
+            for c in children.iter_mut()
+            {
+                let n : &Rc<String> = &global.g.string_cache_inv[c.text as usize];
+                if c.children.is_some() && &**n == "declarator"
+                {
+                    print_ast_pred_recdec(c, &global.g.string_cache_inv, 0);
+                    let mut yet_valid = false;
+                    for c in c.children.as_mut().unwrap().iter_mut()
+                    {
+                        let f : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
+                        {
+                            let n = &global.g.string_cache_inv[c.text as usize];
+                            if !yet_valid && c.children.is_some() && &**n == "parameter_type_list"
+                            {
+                                println!(":::::FSGA#$GO#$L^@!^%151515:asdfgkjaergioaerg");
+                                yet_valid = true;
+                                return true;
+                            }
+                            if yet_valid && c.children.is_some() && &**n == "identifier"
+                            {
+                                let nj2 = c.children.as_ref().unwrap()[0].text;
+                                data.variable_stack.last_mut().unwrap().insert(nj2);
+                                let n2 : &Rc<String> = &global.g.string_cache_inv[nj2 as usize];
+                                println!("--- found var {n2}");
+                                return false;
+                            }
+                            if c.children.is_some() && matches!(&***n, "parameter_type_list" | "struct_or_union_specifier")
+                            {
+                                return false;
+                            }
+                            true
+                        };
+                        visit_ast(c, f);
+                    }
+                    
+                    // ????
+                }
+            }
+            
+            println!("{:?}", data);
+            Ok(0)
+        }
+    ));
+    
     let ast = pred_recdec_parse(&g, "S", &tokens[..], guards, hooks);
     println!("{}", ast.is_ok());
     println!("Parse time taken: {:?} under {} items", start.elapsed(), tokens.len());
     let start = std::time::Instant::now();
-    //if let Ok(ast) = &ast { print_ast_pred_recdec(ast, &g.string_cache_inv, 0); }
+    if let Ok(ast) = &ast { print_ast_pred_recdec(ast, &g.string_cache_inv, 0); }
     drop(ast.unwrap());
     println!("AST destruction time: {:?}", start.elapsed());
     println!("sizeof ASTNode {}", std::mem::size_of::<ASTNode>());

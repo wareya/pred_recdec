@@ -336,7 +336,8 @@ pub fn pred_recdec_parse_impl_recursive(
         tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()))
 }
 
-pub fn visit_mut(n : &mut ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
+/// Takes a fn that returns whether it's OK to also visit the children of this node.
+pub fn visit_mut(n : &mut ASTNode, f : &mut dyn FnMut(&mut ASTNode) -> bool)
 {
     let flag = f(n);
     if flag && let Some(c) = &mut n.children
@@ -344,6 +345,17 @@ pub fn visit_mut(n : &mut ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
         for c in c.iter_mut()
         {
             visit_mut(c, f);
+        }
+    }
+}
+pub fn visit_ast(n : &ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
+{
+    let flag = f(n);
+    if flag && let Some(c) = &n.children
+    {
+        for c in c.iter()
+        {
+            visit_ast(c, f);
         }
     }
 }
