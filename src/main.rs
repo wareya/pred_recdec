@@ -137,6 +137,7 @@ fn main() {
                 let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new(regex::Regex::new(
                     r#"(?x)\A(?:typeof|__typeof__|typedef|extern|__extension__
                     |__builtin_va_list|static|auto|register|const|restrict
+                    |__cdecl|__stdcall
                     |__restrict__|volatile|__volatile__|__inline__|__inline|inline|void|char|short
                     |int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|enum|struct|union)\z"#
                 ).unwrap(), None));
@@ -222,6 +223,40 @@ fn main() {
                     }
                     //println!("accepting cast at {i}");
                     return GuardResult::Accept;
+                }
+            }
+            //println!("rejecting cast at {i}");
+            GuardResult::Reject
+        }
+    ));
+    let f = Rc::clone(&type_specifier_checker);
+    guards.insert("is_postfix_not_sizeof_argument".to_string(),
+        Rc::new(move |global : &mut PrdGlobal, tokens : &[Token], i : usize|
+        {
+            if i < tokens.len()
+            {
+                let n = &tokens[i].text;
+                let n = &global.g.string_cache_inv[*n as usize];
+                if &**n == "("
+                {
+                    if !matches!(f(global, tokens, i+1), GuardResult::Accept)
+                    {
+                        //println!("rejecting cast at {i} (type specifier check failed)");
+                        return GuardResult::Accept;
+                    }
+                    let i2 = i.strict_add_signed(tokens[i].pair);
+                    let i3 = i2 + 1;
+                    if i3 < tokens.len()
+                    {
+                        let n2 = &global.g.string_cache_inv[tokens[i3].text as usize];
+                        if matches!(&***n2, "{" | "(" | "++" | "--" | "." | "->")
+                        {
+                            //println!("rejecting cast at {i} (it's a struct literal)");
+                            return GuardResult::Accept;
+                        }
+                    }
+                    //println!("accepting cast at {i}");
+                    return GuardResult::Reject;
                 }
             }
             //println!("rejecting cast at {i}");

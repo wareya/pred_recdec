@@ -72,9 +72,11 @@ pub struct PrdGlobal<'a> {
 pub fn pred_recdec_parse_impl_recursive(
     global : &mut PrdGlobal,
     gp_id : usize, tokens : &[Token], token_start : usize,
-    #[cfg(feature = "parse_trace")] depth : usize
+    depth : usize
 ) -> Result<ASTNode, String>
 {
+    const DEPTH_LIMIT : usize = 1000;
+    if depth > DEPTH_LIMIT { return Err(format!("Exceeded recursion depth limit of {DEPTH_LIMIT}.")); }
     let mut g_item = &global.g.points[gp_id];
     let mut chosen_name_id = g_item.name_id;
     
@@ -191,9 +193,7 @@ pub fn pred_recdec_parse_impl_recursive(
             {
                 MatchingTerm::Rule(id) =>
                 {
-                    let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, i,
-                        #[cfg(feature = "parse_trace")] depth
-                    );
+                    let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, i, depth + 1);
                     child = std::hint::black_box(child);
                     if child.is_err() && global.g.points[*id].recover.is_some()
                     {
@@ -382,9 +382,7 @@ pub fn pred_recdec_parse(
         let _ = f(&mut global, tokens, 0, &mut vec!());
     }
     
-    pred_recdec_parse_impl_recursive(&mut global, *gp_id, tokens, 0,
-        #[cfg(feature = "parse_trace")] 0, // depth
-    )
+    pred_recdec_parse_impl_recursive(&mut global, *gp_id, tokens, 0, 0)
 }
 
 
