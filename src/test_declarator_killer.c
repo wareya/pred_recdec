@@ -73,3 +73,10 @@ T f3(x)
 {
     // ...
 }
+
+void foo3(
+    int T
+    //, void(*fptr)(const T x) // mandatory error
+)
+{
+}

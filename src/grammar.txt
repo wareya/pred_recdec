@@ -146,7 +146,7 @@ parameter_list_tail2 ::=
     @auto "..."
     | parameter_declaration $become parameter_list_tail
 parameter_declaration ::=
-    declaration_specifiers parameter_declarator
+    declaration_specifiers parameter_declarator !hook(typedefs_log)
 parameter_declarator ::=
     @peek(0, "*") pointer $become parameter_declarator2
     | @peekr(0, r`\(|\[`r) NA_direct_abstract_declarator
