@@ -69,7 +69,7 @@ T f(T (*T)(T x))
 }
 
 T f3(x)
-    T (*x)(T x); // invalid: previous T was a type, not a name
+    T (*x)(T x);
 {
     // ...
 }
