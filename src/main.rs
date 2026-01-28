@@ -88,6 +88,7 @@ fn main() {
         if i < tokens.len()
         {
             let nj = &tokens[i].text;
+            let n = &global.g.string_cache_inv[*nj as usize];
             let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(regex::Regex::new(
                 r#"(?x)\A(?:typeof|__typeof__|void|__extension__
                 |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary
@@ -113,6 +114,7 @@ fn main() {
                     }
                     if data.variable_stack[i].contains(nj)
                     {
+                        //println!("!!!! nope that's a variable");
                         return GuardResult::Reject;
                     }
                 }
@@ -131,7 +133,7 @@ fn main() {
             if i < tokens.len()
             {
                 let nj = &tokens[i].text;
-                //let n = &global.g.string_cache_inv[*nj as usize];
+                let n = &global.g.string_cache_inv[*nj as usize];
                 let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new(regex::Regex::new(
                     r#"(?x)\A(?:typeof|__typeof__|typedef|extern|__extension__
                     |__builtin_va_list|static|auto|register|const|restrict
@@ -160,6 +162,7 @@ fn main() {
                         }
                         if data.variable_stack[i].contains(nj)
                         {
+                            //println!("!!!! nope that's a variable");
                             return GuardResult::Reject;
                         }
                     }
@@ -326,7 +329,7 @@ fn main() {
             {
                 let n = &global.g.string_cache_inv[c.text as usize];
                 if c.children.is_none() && &**n == "typedef" { is_typedef = true; }
-                if c.children.is_some() && matches!(&***n, "parameter_type_list" | "struct_or_union_specifier") { return false; }
+                if c.children.is_some() && matches!(&***n, "typedef_name" | "parameter_type_list" | "struct_or_union_specifier") { return false; }
                 true
             };
             for c in children.iter_mut()
@@ -335,7 +338,7 @@ fn main() {
                 //print_ast_pred_recdec(c, &global.g.string_cache_inv, 0);
             }
             
-            //println!("looking for typedef storeability at {_i}");
+            //println!("looking for typedef storeability at {_i}. might be typedef? {is_typedef}");
             //println!("found typedef context to log with");
             let f2 : &mut dyn FnMut(&ASTNode) -> bool = &mut |c : &ASTNode|
             {
@@ -344,19 +347,20 @@ fn main() {
                 {
                     let nj2 = c.children.as_ref().unwrap()[0].text;
                     
-                    
                     if is_typedef
                     {
+                        //println!("found. {is_typedef}");
                         data.typedef_stack.last_mut().unwrap().insert(nj2);
                         data.typedef_seen.insert(nj2);
                     }
                     else
                     {
+                        //println!("found. {is_typedef}");
                         data.variable_stack.last_mut().unwrap().insert(nj2);
                     }
                     //println!("logged {} as typedef", global.g.string_cache_inv[c.children.as_ref().unwrap()[0].text as usize]);
                 }
-                if c.children.is_some() && matches!(&***n, "parameter_type_list" | "struct_or_union_specifier") { return false; }
+                if c.children.is_some() && matches!(&***n, "typedef_name" | "parameter_type_list" | "struct_or_union_specifier") { return false; }
                 true
             };
             for c in children.iter_mut()
@@ -472,7 +476,7 @@ fn main() {
                 let n : &Rc<String> = &global.g.string_cache_inv[c.text as usize];
                 if c.children.is_some() && &**n == "declarator"
                 {
-                    print_ast_pred_recdec(c, &global.g.string_cache_inv, 0);
+                    //print_ast_pred_recdec(c, &global.g.string_cache_inv, 0);
                     let mut yet_valid = false;
                     for c in c.children.as_mut().unwrap().iter_mut()
                     {
@@ -481,7 +485,7 @@ fn main() {
                             let n = &global.g.string_cache_inv[c.text as usize];
                             if !yet_valid && c.children.is_some() && &**n == "parameter_type_list"
                             {
-                                println!(":::::FSGA#$GO#$L^@!^%151515:asdfgkjaergioaerg");
+                                //println!(":::::FSGA#$GO#$L^@!^%151515:asdfgkjaergioaerg");
                                 yet_valid = true;
                                 return true;
                             }
@@ -490,10 +494,10 @@ fn main() {
                                 let nj2 = c.children.as_ref().unwrap()[0].text;
                                 data.variable_stack.last_mut().unwrap().insert(nj2);
                                 let n2 : &Rc<String> = &global.g.string_cache_inv[nj2 as usize];
-                                println!("--- found var {n2}");
+                                //println!("--- found var {n2}");
                                 return false;
                             }
-                            if c.children.is_some() && matches!(&***n, "parameter_type_list" | "struct_or_union_specifier")
+                            if c.children.is_some() && matches!(&***n, "typedef_name" | "parameter_type_list" | "struct_or_union_specifier")
                             {
                                 return false;
                             }
@@ -506,7 +510,7 @@ fn main() {
                 }
             }
             
-            println!("{:?}", data);
+            //println!("{:?}", data);
             Ok(0)
         }
     ));
@@ -515,7 +519,9 @@ fn main() {
     println!("{}", ast.is_ok());
     println!("Parse time taken: {:?} under {} items", start.elapsed(), tokens.len());
     let start = std::time::Instant::now();
-    if let Ok(ast) = &ast { print_ast_pred_recdec(ast, &g.string_cache_inv, 0); }
+    {
+        //if let Ok(ast) = &ast { print_ast_pred_recdec(ast, &g.string_cache_inv, 0); }
+    }
     drop(ast.unwrap());
     println!("AST destruction time: {:?}", start.elapsed());
     println!("sizeof ASTNode {}", std::mem::size_of::<ASTNode>());

@@ -15,8 +15,13 @@ S ::= translation_unit
 declaration_specifiers ::=
     declaration_specifier $become declaration_specifiers_star
 declaration_specifiers_star ::=
-    @peekr(1, r`[\[\(,;:=]`r) #empty
+    @peekr(1, r`[\[\),;:=]`r) #empty
+    | @peek(0, "__attribute__")  declaration_specifiers_star_guarded
+    | @peekr(1, r`\(`r) $become declaration_specifiers_star_guard2
     | $become declaration_specifiers_star_guarded
+declaration_specifiers_star_guard2 ::=
+    @peekr(2, r`\*|__attribute__`r) $become declaration_specifiers_star_guarded
+    | #empty
 declaration_specifiers_star_guarded ::=
     @guard(is_declaration_indicator) declaration_specifier $become declaration_specifiers_star
     | #empty
