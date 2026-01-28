@@ -1,17 +1,27 @@
 typedef struct parserdestroyer { int x; } parserdestroyer;
 typedef struct parserdestroyer (__attribute__((__cdecl__)) *_onexit_t)(void);
+typedef parserdestroyer (__attribute__((__cdecl__)) *_onexit_t_2)(void);
+parserdestroyer (__attribute__((__cdecl__)) *_onexit_t_3)(void);
+struct parserdestroyer (__attribute__((__cdecl__)) *_onexit_t_4)(void);
+typedef struct parserdestroyer (*_onexit_t_5)(void);
+struct parserdestroyer _onexit_6(void) { }
+
+typedef struct parserdestroyer (*_onexit_t_7)(void);
+
+typedef int (*fq)(void);
+typedef fq (*q)(void);
 
 typedef void (*_badfptrtype)(int);
 typedef int foobarred;
-void x()
+void xf()
 {
     static foobarred volatile foobarred;
     foobarred = 5;
 }
 typedef struct foo { int asdf; } foo;
-void asdfasdf { { int foo; } }
-void blah(foo x, int foo);
-void blah(foo x, int foo) { }
+void asdfasdf() { { int foo; } }
+void blahj(foo x, int foo);
+void blahj(foo x, int foo) { }
 void blah2(int foo) { foo = 5; }
 
 void blah(int foo) {
