@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 mimalloc = "0.1.48"
+pcre2 = "0.2.11"
 regex = "1.12.2"
 rustc-hash = "2.1.1"
 
@@ -22,3 +23,7 @@ debug = true
 
 [features]
 parse_trace = []
+
+[dev-dependencies]
+serde_json = "1.0.149"
+simd-json = "0.17.0"

@@ -6,8 +6,9 @@ mod bnf;
 use bnf::*;
 
 mod pred_recdec;
-#[allow(unused)]
 use pred_recdec::*;
+
+mod json;
 
 fn main() {
     
@@ -88,8 +89,8 @@ fn main() {
         if i < tokens.len()
         {
             let nj = &tokens[i].text;
-            let n = &global.g.string_cache_inv[*nj as usize];
-            let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(regex::Regex::new(
+            //let n = &global.g.string_cache_inv[*nj as usize];
+            let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(new_regex(
                 r#"(?x)\A(?:typeof|__typeof__|void|__extension__
                 |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|const|volatile|__volatile__
                 |enum|struct|union)\z"#
@@ -133,8 +134,8 @@ fn main() {
             if i < tokens.len()
             {
                 let nj = &tokens[i].text;
-                let n = &global.g.string_cache_inv[*nj as usize];
-                let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new(regex::Regex::new(
+                //let n = &global.g.string_cache_inv[*nj as usize];
+                let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new(new_regex(
                     r#"(?x)\A(?:typeof|__typeof__|typedef|extern|__extension__
                     |__builtin_va_list|static|auto|register|const|restrict
                     |__cdecl|__stdcall
@@ -183,7 +184,7 @@ fn main() {
                 if &**n == "case" { return GuardResult::Accept; }
                 let nj2 = &tokens[i+1].text;
                 let n2 = &global.g.string_cache_inv[*nj2 as usize];
-                let r = global.udata_r.entry(648245613).or_insert_with(|| RegexCacher::new(regex::Regex::new(
+                let r = global.udata_r.entry(648245613).or_insert_with(|| RegexCacher::new(new_regex(
                     r#"^(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*$"#
                 ).unwrap(), None));
                 if &**n2 == ":" && r.is_match_2(*nj, &global.g.string_cache_inv)
@@ -270,7 +271,7 @@ fn main() {
             if i < tokens.len()
             {
                 let nj = &tokens[i].text;
-                let r = global.udata_r.entry(648245613).or_insert_with(|| RegexCacher::new(regex::Regex::new(
+                let r = global.udata_r.entry(648245613).or_insert_with(|| RegexCacher::new(new_regex(
                     r#"^(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*$"#
                 ).unwrap(), None));
                 if r.is_match_2(*nj, &global.g.string_cache_inv)
@@ -528,7 +529,7 @@ fn main() {
                             {
                                 let nj2 = c.children.as_ref().unwrap()[0].text;
                                 data.variable_stack.last_mut().unwrap().insert(nj2);
-                                let n2 : &Rc<String> = &global.g.string_cache_inv[nj2 as usize];
+                                //let n2 : &Rc<String> = &global.g.string_cache_inv[nj2 as usize];
                                 //println!("--- found var {n2}");
                                 return false;
                             }
@@ -549,6 +550,9 @@ fn main() {
             Ok(0)
         }
     ));
+    
+    let hooks = Rc::new(hooks);
+    let guards = Rc::new(guards);
     
     let ast = pred_recdec_parse(&g, "S", &tokens[..], guards, hooks);
     println!("{}", ast.is_ok());

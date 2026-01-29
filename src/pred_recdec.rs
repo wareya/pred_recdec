@@ -60,8 +60,8 @@ impl AnyMap {
 
 
 pub struct PrdGlobal<'a> {
-    pub guards : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>,
-    pub hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>,
+    pub guards : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>>,
+    pub hooks : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>>,
     
     #[allow(unused)] pub udata : AnyMap,
     pub udata_r : HashMap<usize, RegexCacher>,
@@ -163,7 +163,7 @@ pub fn pred_recdec_parse_impl_recursive(
                     accepted = true;
                     if let Some(r) = &global.g.reserved
                     {
-                        if r.is_match(&global.g.string_cache_inv[tokens[loc].text as usize]) { accepted = false; }
+                        if regex_is_match(r, &global.g.string_cache_inv[tokens[loc].text as usize]) { accepted = false; }
                     }
                 }
                 term_idx += 1;
@@ -366,8 +366,8 @@ pub fn visit_ast(n : &ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
 #[allow(unused)]
 pub fn pred_recdec_parse(
     g : &Grammar, root_rule_name : &str, tokens : &[Token],
-    guards : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>,
-    hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>,
+    guards : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>>,
+    hooks : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>>,
 ) -> Result<ASTNode, String>
 {
     let gp_id = g.by_name.get(root_rule_name).unwrap();

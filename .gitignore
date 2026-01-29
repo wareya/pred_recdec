@@ -1,1 +1,3 @@
 /target
+/json_bench/*.json
+/json_tests/*.json

@@ -1,0 +1,78 @@
+# Predicated Recursive Descent grammar for JSON
+# Fully commented version, with a couple optimizations
+# Passes all of the parsing tests in https://github.com/nst/JSONTestSuite
+json ::= element $become EOF
+EOF ::= @eof
+
+# A @ indicates a "predicate" or "guard". They may only appear at the start of a given alternation.
+# Predicates/guards tell the parser exactly what path to follow.
+# The parser performs no memoization and no backtracking.
+# (The lack of backtracking or memoization means that impure hooks are safe. This is a big difference from PEG.)
+element ::=
+   @peek(0, "{") object
+   | @peek(0, "[") array
+   # A``r is a type of regex that only looks at the front of the token. It ignores the rest.
+   # Meaning, it doesn't have an implicit \z at the end. Also, it never ever affects tokenization. R``r also never affects tokenization.
+   # (r``r, lowercase, DOES affect tokenization.)
+   | @peekr(0, A`[0-9\-]`r) number
+   | @peekr(0, A`"`r) string
+   | A`[tfn]`r # true|false|null
+
+object ::=
+    @peek(1, "}") "{" "}"
+    | "{" members "}"
+# $become is essentially an "optimized tail call". It tells the parser to continue in-place, but with the set of choices in the next rule.
+# The main reason is for building flat lists instead of deep recursive ones.
+# But it can also be used to clean up left-factorization, or split a given production/alternation into two choices partway through.
+# The final AST item has a name corresponding to the parent, not the child. If you want the child's name, use $become_as instead.
+members ::=
+    member $become memberlist
+memberlist ::=
+    # [@auto X] directly desugars into [@peek(0, X) X]:    | @peek(0, ",") ","
+    @auto "," member $become memberlist
+    | #empty
+member ::=
+    A`"`r ":" element
+
+array ::=
+    @peek(1, "]") "[" "]"
+    | "[" elements "]"
+# EXAMPLE OF AN IMPURE HOOK: If, for some reason, we wanted to log every non-empty array in the file, we could write:
+#    | "[" elements "]" !hook(log_array)
+# OR, if checking this alternation was nontrivial, we could write:
+#    | @guard(is_real_array) "[" elements "]"
+# where is_real_array and log_array are provided by the execution environment.
+elements ::=
+    element $become elementlist
+elementlist ::=
+    @auto "," element $become elementlist
+    | #empty
+
+string ::=
+    R`"(?:[ !#-\[\]-\u{10ffff}]|\\["\\\/bfnrt]|\\u[a-fA-F0-9]{4})*"`r
+    #$any
+number ::=
+    R`[-]?(?:[1-9][0-9]+|[0-9])(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?`r
+    #$any
+
+# Any r``r found outside of a peek in the grammar is fed to the tokenizer, which performs whitespace skipping and maximal munch.
+# Then, when encountered during parsing, ANY R``r OR r``r is a valid match rule if the token the parser is looking at FULLY matches that regex.
+# We can make the tokenizer's job easier by replacing r``r match rules in the grammar with R``r, which don't talk to the tokenizer, and then
+#  using r``r in a dummy rule to combine them all together manually. This gives it fewer regexes to loop over during maximal munch.
+# ...
+# After tokenization (i.e. during parsing), R``r and r``r act the same. During tokenization, R``r has no effect, but r``r does.
+# r``r is like "...", and tells the tokenizer "hi, look for something that looks like this when you do maximal munch, thanks!"
+# While R``r is different and doesn't talk to the tokenizer at all.
+# ...
+# This cannot be automated because the regex | alternation operator is not maximal munch, it's first-valid. So be careful when combining
+# Importantly, __tokenization_dummy is not a magic rule name. The engine just sees r``r in a non-peek position and goes "ok, I'll register that".
+# ...
+# Not magic.
+__tokenization_dummy ::=
+    # Literal terminals that are covered by a tokenization regex are kept from being made visible to tokenizer.
+    # If there are zero tokenizer-visible literal terminals, then the entire literal terminal step of the tokenizer can be skipped, and is.
+    # This gives a small performance boost, so we do it.
+    r`(?:"(?:[ !#-\[\]-\u{10ffff}]|\\["\\\/bfnrt]|\\u[a-fA-F0-9]{4})*")|(?:[-]?(?:[1-9][0-9]+|[0-9])(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)|true|false|null|,|\[|\]|\{|\}|:`r
+    #r`(?:"(?:[ !#-\[\]-\u{10ffff}]|\\["\\\/bfnrt]|\\u[a-fA-F0-9]{4})*")|(?:[-]?(?:[1-9][0-9]+|[0-9])(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)`r
+    #r`"(?:[^\\"]|\\.)*"|[0-9\-+eE.]+|true|false|null|,|\[|\]|\{|\}|:`r
+    #r`"(?:[^\\"]|\\.)*"|[0-9\-+eE.]+`r
