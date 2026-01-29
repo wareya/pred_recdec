@@ -25,6 +25,40 @@ Keeping as much in BNF as possible leaves the easy 90% of your grammar in a high
 
 Currently a prototype. Actually works, but not finished. Example grammar snippets:
 
+JSON grammar (you should use a "real" parser like serde_json, I only wrote a JSON grammar because it's a good example):
+```r
+# Predicated Recursive Descent grammar for JSON
+# Simpler, slightly slower version
+# Passes all of the parsing tests in https://github.com/nst/JSONTestSuite
+json ::= element $become EOF
+EOF ::= @eof
+
+element ::=
+   @peek(0, "{") object | @peek(0, "[") array
+   # A``r regex strings match any token that starts with the contained regex
+   | @peekr(0, A`"`r) string
+   | @auto "true" | @auto "false" | @auto "null"
+   | number
+
+object ::= @peek(1, "}") "{" "}" | "{" members "}"
+members ::= member $become memberlist
+memberlist ::= @auto "," member $become memberlist | #empty
+member ::= string ":" element
+
+array ::= @peek(1, "]") "[" "]" | "[" elements "]"
+# Lookahead/predicates are necessary for any non-final alternation. Alternations are attempted in order, and never backtracked/memoized.
+# Example: this would never attempt to match the "elements" production: array ::= "[" "]" | "[" elements "]"
+
+elements ::= element $become elementlist
+elementlist ::= @auto "," element $become elementlist | #empty
+# NOTE: #empty is just a comment. It's not a magical way of writing epsilons.
+
+# r``r regex strings both perform a match test at parse time (cached) and Also register themselves with the tokenizer.
+# R``r do the same, but WITHOUT registering themselves with the tokenizer. A``r also do not register with the tokenizer.
+string ::= r`"(?:[ !#-\[\]-\u{10ffff}]|\\["\\\/bfnrt]|\\u[a-fA-F0-9]{4})*"`r
+number ::= r`[-]?(?:[1-9][0-9]+|[0-9])(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?`r
+```
+
 Stateful symbol table management:
 ```r
 STATEMENT ::=
@@ -168,25 +202,6 @@ S {
 }
 ```
 
-Kitchen sink:
-```r
-__COMMENTS ::= //
-__COMMENT_REGEXES ::= r`(?s)<!--.*?-->`r
-__COMMENT_PAIRS ::= /* */ | {* *}
-__BRACKET_PAIRS ::= { } | ( ) | [ ]
-__RESERVED_WORDS ::= 67 | 420 | if
-
-S ::= expr5
-expr5 ::= expr0 $become expr5_tail
-expr5_tail ::=
-    @peekr(0, r`[*%/]`r) r`[*%/]`r expr0 $become expr5_tail
-    | #intentionally empty
-expr0 ::= 
-    @auto "(" expr5 ")"
-    | r`[0-9]+`r
-    | @recover r`[)]`r
-```
-
 TODO:
 
-- $hoist, $skip, $drop, $dropifempty
+- $hoist, $skip, $drop, $dropifempty, $rename
