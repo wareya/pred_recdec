@@ -58,7 +58,7 @@ elementlist ::= @auto "," element $become elementlist | #empty
 # r``r regex strings both perform a match test at parse time (cached)
 #   and Also register themselves with the tokenizer.
 # R``r do the same, but WITHOUT registering themselves with the tokenizer.
-# A``r also do not register with the tokenizer, but only check the front, not the full tolen.
+# A``r also do not register with the tokenizer, but only check the front, not the full token.
 string ::= r`"(?:[ !#-\[\]-\u{10ffff}]|\\["\\\/bfnrt]|\\u[a-fA-F0-9]{4})*"`r
 number ::= r`[-]?(?:[1-9][0-9]+|[0-9])(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?`r
 ```
