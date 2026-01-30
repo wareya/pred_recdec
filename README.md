@@ -46,15 +46,19 @@ memberlist ::= @auto "," member $become memberlist | #empty
 member ::= string ":" element
 
 array ::= @peek(1, "]") "[" "]" | "[" elements "]"
-# Lookahead/predicates are necessary for any non-final alternation. Alternations are attempted in order, and never backtracked/memoized.
-# Example: this would never attempt to match the "elements" production: array ::= "[" "]" | "[" elements "]"
+# Lookahead/predicates are necessary for any non-final alternation.
+# Alternations are attempted in order, and never backtracked/memoized.
+# Bad example that would never attempt to match the "elements" production:
+#   array ::= "[" "]" | "[" elements "]"
 
 elements ::= element $become elementlist
 elementlist ::= @auto "," element $become elementlist | #empty
 # NOTE: #empty is just a comment. It's not a magical way of writing epsilons.
 
-# r``r regex strings both perform a match test at parse time (cached) and Also register themselves with the tokenizer.
-# R``r do the same, but WITHOUT registering themselves with the tokenizer. A``r also do not register with the tokenizer.
+# r``r regex strings both perform a match test at parse time (cached)
+#   and Also register themselves with the tokenizer.
+# R``r do the same, but WITHOUT registering themselves with the tokenizer.
+# A``r also do not register with the tokenizer, but only check the front, not the full tolen.
 string ::= r`"(?:[ !#-\[\]-\u{10ffff}]|\\["\\\/bfnrt]|\\u[a-fA-F0-9]{4})*"`r
 number ::= r`[-]?(?:[1-9][0-9]+|[0-9])(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?`r
 ```
