@@ -10,7 +10,7 @@ Features:
 
 - BNF syntax and automatic AST contruction: keep your grammar low-boilerplate
 - Legible, easy-to-learn non-BNF parts
-- Support for dirty parsing hooks like the "typedef" hack, etc
+- Fully safe support for dirty parsing hooks like the "typedef" hack, etc
 - Error recovery support (@recover, @recover_before)
 - Built-in tokenizer that doesn't choke on "soft keywords"
 - Built-in comment handling, both nested and non-nested comments
