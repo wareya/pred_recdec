@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+type HashMap<K, V> = std::collections::HashMap::<K, V, crate::HashBuilder>;
+type HashSet<K> = std::collections::HashSet::<K, crate::HashBuilder>;
 use std::rc::Rc;
 use std::cell::RefCell;
 use regex::Regex as Regex;
@@ -88,7 +89,7 @@ pub struct Grammar {
     pub by_name: HashMap<String, usize>,
     
     pub literals: Vec<String>,
-    pub regexes: Vec<Regex>,
+    pub regexes: Vec<(Regex, RegexCacher)>,
     
     pub string_cache : HashMap<String, u32>,
     pub string_cache_inv : Vec<Rc<String>>,
@@ -117,7 +118,7 @@ pub struct Alternation {
 
 #[derive(Debug, Clone)]
 pub enum MatchDirective {
-    Become, BecomeAs, Hoist, Any, Drop, DropIfNull, Pruned, HoistUnitary,
+    Become, BecomeAs, Hoist, Any, Drop, DropIfNull, Pruned, Rename,
 }
 
 #[derive(Debug, Clone)]
@@ -316,7 +317,7 @@ pub fn bnf_parse(input: &str) -> Result<Vec<(String, Vec<Vec<String>>)>, String>
 
 pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Grammar, String>
 {
-    let mut by_name = HashMap::new();
+    let mut by_name = HashMap::default();
     for (name, _) in input.iter()
     {
         if matches!(&**name, "__BRACKET_PAIRS" | "__COMMENT_PAIRS" | "__COMMENT_PAIRS_NESTED" | "__COMMENT_REGEXES" | "__COMMENTS" | "__RESERVED_WORDS") { continue; }
@@ -326,11 +327,11 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
         }
     }
     
-    let mut string_cache = HashMap::new();
+    let mut string_cache = HashMap::default();
     let mut string_cache_inv = Vec::new();
     let mut points = Vec::new();
-    let mut literals = HashSet::new();
-    let mut lex_regexes = HashSet::new();
+    let mut literals = HashSet::default();
+    let mut lex_regexes = HashMap::default();
     
     let mut bracket_pairs = Vec::new();
     let mut comment_pairs = Vec::new();
@@ -338,7 +339,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     let mut comment_regexes = Vec::new();
     let mut comments = Vec::new();
     
-    let mut cache_pool = HashMap::<String, _>::new();
+    let mut cache_pool = HashMap::<String, _>::default();
     
     let mut reserved = None;
     for (name, raw_forms) in input.iter()
@@ -418,9 +419,10 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     let pattern = &term_str[2..term_str.len() - 2];
                     let pattern_all = format!("\\A(?:{pattern})\\z"); // full match (for parsing)
                     let pattern = format!("\\A(?:{pattern})"); // at start (for tokenization)
-                    lex_regexes.insert(pattern);
                     let re2 = new_regex(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
-                    matching_terms.push(MatchingTerm::TermRegex(RegexCacher::new(re2, Some(&mut cache_pool))));
+                    let re2 = RegexCacher::new(re2, Some(&mut cache_pool));
+                    lex_regexes.insert(pattern, re2.clone());
+                    matching_terms.push(MatchingTerm::TermRegex(re2));
                     continue;
                 }
                 // non-tokenizing regex (optimization: hide redundant regexes from the tokenizer)
@@ -557,11 +559,6 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     matching_terms.push(MatchingTerm::Directive(MatchDirective::Pruned));
                     continue;
                 }
-                if matches!(&**term_str, "$HOIST_IF_UNITARY" | "$hoist_if_unitary")
-                {
-                    matching_terms.push(MatchingTerm::Directive(MatchDirective::HoistUnitary));
-                    continue;
-                }
                 let id = by_name.get(term_str).ok_or_else(|| format!("Not a defined grammar rule: '{term_str}' (context: '{name}')"))?;
                 matching_terms.push(MatchingTerm::Rule(*id));
             }
@@ -587,6 +584,7 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
                     _ => Err(format!("@auto must be followed by a string literal or regex literal (context: {name})"))?
                 }
             }
+            // TODO: check for illegally-placed become, becomeas, hoist
             forms.push(Alternation { matching_terms });
         }
         if forms.len() > 60000
@@ -625,9 +623,9 @@ pub fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Result<Gramma
     literals.sort();
     
     let mut regexes = Vec::new();
-    for r in lex_regexes
+    for (r, r2) in lex_regexes
     {
-        regexes.push(new_regex(&r).map_err(|e| format!("Invalid regex '{}': {}", r, e))?);
+        regexes.push((new_regex(&r).map_err(|e| format!("Invalid regex '{}': {}", r, e))?, r2));
     }
     Ok(Grammar { points, by_name, literals, regexes, string_cache, string_cache_inv, bracket_pairs, comments, comment_pairs, comment_regexes, reserved, comment_pairs_nested })
 }
@@ -678,7 +676,7 @@ pub fn tokenize(
         let mut covered = false;
         for r in &g.regexes
         {
-            if let Some(loc) = regex_find(r, l).map(|x| x.end() - x.start())
+            if let Some(loc) = regex_find(&r.0, l).map(|x| x.end() - x.start())
             {
                 if loc == l.len()
                 {
@@ -711,9 +709,9 @@ pub fn tokenize(
         string_cache_lookup_id(&mut g.string_cache, &mut g.string_cache_inv, &point.name);
     }
     
-    let mut openers = HashSet::new();
-    let mut closers = HashMap::new();
-    let mut stacks = HashMap::new();
+    let mut openers = HashSet::default();
+    let mut closers = HashMap::default();
+    let mut stacks = HashMap::default();
     let mut any_paired = false;
     for (l, r) in &g.bracket_pairs
     {
@@ -811,17 +809,22 @@ pub fn tokenize(
         }
         // Maximal munch: Regex pass
         let mut longest = 0;
+        //let mut found_regex = None;
         for r in &g.regexes
         {
-            if let Some(loc) = regex_find(r, s).map(|x| x.end() - x.start())
+            if let Some(loc) = regex_find(&r.0, s)
             {
-                longest = longest.max(loc);
+                let len = loc.end() - loc.start();
+                //found_regex = Some(&r.1);
+                longest = longest.max(len);
             }
         }
         // Literals pass.
-        if let Some(all_literals_regex) = &all_literals_regex && let Some(loc) = regex_find(&all_literals_regex, s).map(|x| x.end() - x.start())
+        if let Some(all_literals_regex) = &all_literals_regex && let Some(loc) = regex_find(&all_literals_regex, s)
         {
-            longest = longest.max(loc);
+            let len = loc.end() - loc.start();
+            //found_regex = None;
+            longest = longest.max(len);
         }
         if longest == 0
         {
@@ -829,8 +832,18 @@ pub fn tokenize(
             return Err(format!("Failed to tokenize at index {}:{}[...]", s_orig.len()-s.len(), sn));
         }
         
+        //let text_info = string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &s[..longest]);
+        //let text = text_info.1;
         let text = string_cache_lookup_id(&mut g.string_cache, &mut g.string_cache_inv, &s[..longest]);
         let mut token = Token { text, pair : 0 };
+        
+        /*
+        if let Some(r2) = found_regex
+        {
+            r2.cache2.borrow_mut().insert(text, true);
+            r2.cache.borrow_mut().insert(text_info.0, true);
+        }
+        */
         
         if any_paired
         {

@@ -2,6 +2,8 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+pub use rustc_hash::FxBuildHasher as HashBuilder;
+
 mod bnf;
 use bnf::*;
 
@@ -11,7 +13,6 @@ use pred_recdec::*;
 mod json;
 
 fn main() {
-    
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() == 1
@@ -65,9 +66,8 @@ fn main() {
     
     let start = std::time::Instant::now();
     use std::rc::Rc;
-    use rustc_hash::FxBuildHasher;
-    type HashMap<K, V> = std::collections::HashMap::<K, V, FxBuildHasher>;
-    type HashSet<V> = std::collections::HashSet::<V, FxBuildHasher>;
+    type HashMap<K, V> = std::collections::HashMap::<K, V, crate::HashBuilder>;
+    type HashSet<V> = std::collections::HashSet::<V, crate::HashBuilder>;
 
     let mut hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>
         = <_>::default();

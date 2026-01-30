@@ -15,8 +15,7 @@ mod tests {
         println!("Loaded.");
         
         use std::rc::Rc;
-        use rustc_hash::FxBuildHasher;
-        type HashMap<K, V> = std::collections::HashMap::<K, V, FxBuildHasher>;
+        type HashMap<K, V> = std::collections::HashMap::<K, V, crate::HashBuilder>;
 
         let hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>
             = <_>::default();
@@ -62,8 +61,7 @@ mod tests {
         let mut g = bnf_to_grammar(&grammar_source).unwrap();
         
         use std::rc::Rc;
-        use rustc_hash::FxBuildHasher;
-        type HashMap<K, V> = std::collections::HashMap::<K, V, FxBuildHasher>;
+        type HashMap<K, V> = std::collections::HashMap::<K, V, crate::HashBuilder>;
 
         let hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>
             = <_>::default();

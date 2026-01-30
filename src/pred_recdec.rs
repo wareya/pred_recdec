@@ -2,8 +2,7 @@
 
 use std::rc::Rc;
 
-use rustc_hash::FxBuildHasher;
-type HashMap<K, V> = std::collections::HashMap::<K, V, FxBuildHasher>;
+type HashMap<K, V> = std::collections::HashMap::<K, V, crate::HashBuilder>;
 
 use crate::bnf::*;
 
@@ -281,15 +280,6 @@ pub fn pred_recdec_parse_impl_recursive(
                             i += 1;
                         }
                         MatchDirective::Pruned => { pruned = true; matched = true; }
-                        MatchDirective::HoistUnitary =>
-                        {
-                            matched = true;
-                            if children.len() == 1 || children[0].children.is_some()
-                            {
-                                chosen_name_id = children[0].text;
-                                children = children[0].children.take().unwrap();
-                            }
-                        }
                         _ => panic!("TODO: {:?}", d), // also TODO: combine into parent match once all implemented
                     }
                 }
@@ -340,17 +330,6 @@ pub fn pred_recdec_parse_impl_recursive(
 }
 
 /// Takes a fn that returns whether it's OK to also visit the children of this node.
-pub fn visit_mut(n : &mut ASTNode, f : &mut dyn FnMut(&mut ASTNode) -> bool)
-{
-    let flag = f(n);
-    if flag && let Some(c) = &mut n.children
-    {
-        for c in c.iter_mut()
-        {
-            visit_mut(c, f);
-        }
-    }
-}
 pub fn visit_ast(n : &ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
 {
     let flag = f(n);
