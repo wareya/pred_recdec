@@ -13,6 +13,8 @@ Rationale:
 
 I wrote a working C99 grammar (src/grammar.txt). It successfully parses the preprocessor output of both gcc and clang `#include`-ing a kitchen sink worth of stdlib headers. This mirrors how most high-performance parsers are written today, just in a BNF shell.
 
+This is *not* a PEG or packrat thing. It's more like "handwrite an LL(k) parser".
+
 **Performance**: Roughly the same parsing time as Clang and GCC `-fsyntax-only -ftime-report` on a 5.6MB C source file, tested with the included grammar (src/grammar.txt).
 
 **Features**:
@@ -53,8 +55,6 @@ The structure of the BNF corresponds to the structure of the resulting ASTs. Tok
 The resulting parser is scannerful but tolerant of soft keywords. It performs no memoization or backtracking. Impure hooks are safe. There's no lookahead generation or guessing: the parser only does exactly what you specify in the BNF, in order.
 
 This is strong enough to parse C. Yes, the language with the super horrible grammar that needs arbitrary lookahead and state munging to parse correctly.
-
-This is *not* a PEG or packrat thing.
 
 Performance: varies between 50% and 400% slower than a native machine code handwritten parser. For more complex grammars, the performance loss is less. Totally usable!
 
