@@ -172,7 +172,7 @@ Terms starting with ```r`...```, ```R`...```, or ```A`...``` are inline regexes:
 Regex results are cached, so checking them is amortized O(1).
 
 Terms beginning with `!` currently only have one kind:
-- `!hook`, e.g. `!hook(fix_infix_expr)`, are calls to user-provided code. This is **allow to be impure**, e.g. management of **typedef symbol tables**.
+- `!hook`, e.g. `!hook(fix_infix_expr)`, are calls to user-provided code. This is **allowed to be impure**, e.g. management of **typedef symbol tables**.
 
 Terms beginning with `@` are guards/predicates. They determine, at the start of a given alternation/production, whether it is valid. If true, that production is taken, and none of the others will be attempted (at this location). Remember, there's no backtracking or magic.
 - `@peek(N, STRING)` - Checks if, relative to the parse position, the given token contains the given text.

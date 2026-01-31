@@ -89,13 +89,13 @@
 //! Regex results are cached, so checking them is amortized O(1).
 //!
 //! Terms beginning with `!` currently only have one kind:
-//! - `!hook`, e.g. `!hook(fix_infix_expr)`, are calls to user-provided code. This is **allow to be impure**, e.g. management of **typedef symbol tables**.
+//! - `!hook`, e.g. `!hook(fix_infix_expr)`, are calls to user-provided code. This is **allowed to be impure**, e.g. management of **typedef symbol tables**.
 //!
 //! Terms beginning with `@` are guards/predicates. They determine, at the start of a given alternation/production, whether it is valid. If true, that production is taken, and none of the others will be attempted (at this location). Remember, there's no backtracking or magic.
 //! - `@peek(N, STRING)` - Checks if, relative to the parse position, the given token contains the given text.
 //! - `@peekr(N, REGEX)` - Same, but only for regexes.
 //! - `@auto item` - Desugars to `@peek(0, item) item` or `@peekr(0, item) item` automatically.
-//! - `@guard(name)` - Calls user-provided code to determine if the production is accepted.
+//! - `@guard(name)` - Calls user-provided code to determine if the production is accepted. This is allowed to be impure, but you should be careful with it, since a path hasn't been committed yet.
 //! - `@recover` - Pseudo-guard, is never attempted. Instead, it tells the associated grammar rule that if it fails, it's allowed to recover (into a poisoned state) by seeking for a particular set of tokens.
 //! - `@recover_before` - Same, but stops right before accepting any seek token instead of consuming it.
 //! 

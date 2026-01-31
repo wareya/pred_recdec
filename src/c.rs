@@ -444,9 +444,7 @@ mod tests
                     else if tokens[i].pair < 0 { balance -= 1; }
                     if balance >= 0
                     {
-                        children.push(ASTNode {
-                            text : tokens[i].text.clone(), children : None, token_count : 1,
-                        });
+                        children.push(ASTNode::new(None, 1, tokens[i].text));
                         i += 1;
                     }
                 }
@@ -473,7 +471,8 @@ mod tests
                         if lhs.children.is_none() || lhs.children.as_ref().unwrap().len() == 1
                         {
                             let new_children_list = vec!(lhs, op, rhs);
-                            lhs = ASTNode { text : default_text, token_count : new_children_list.iter().map(|x| x.token_count).sum(), children : Some(new_children_list), };
+                            let count = new_children_list.iter().map(|x| x.token_count).sum();
+                            lhs = ASTNode::new(Some(new_children_list), default_text, count, );
                         }
                         else if let Some(c) = lhs.children.as_mut()
                         {

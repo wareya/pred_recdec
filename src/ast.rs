@@ -10,6 +10,11 @@ use crate::bnf::*;
 /// AST node. Grammar rules have children, tokens do not.
 ///
 /// The total structure of the AST is defined by the grammar that it was parsed with.
+///
+/// Why isn't this an enum? Option<Vec<ASTNode>> and other two-variant enums containing a Vec undergo niche optimization. If this were `enum ASTNode { Rule{...}, Token(u32) }` then it would look like you can just add a third variant (e.g. poisoned) without issue. However, doing that would actually increase the size of the ASTNode from 32 bytes to 40 bytes.
+/// 
+/// If the size is ever forced above 32 bytes (e.g. increasing token count from u32 to u64) then I'll probably change it to an enum.
+#[non_exhaustive]
 pub struct ASTNode {
     /// If `Some`, this node is a parent/nonterminal. If `None`, this node is a token/leaf/terminal.
     pub children : Option<Vec<ASTNode>>,
@@ -26,6 +31,7 @@ pub struct ASTNode {
 }
 
 impl ASTNode {
+    pub fn new(children : Option<Vec<ASTNode>>, token_count : u32, text : u32) -> Self { Self { children, token_count, text } }
     pub fn is_poisoned(&self) -> bool { self.token_count >= 0x80000000 }
     pub fn get_real_token_count(&self) -> u32 { if self.token_count >= 0x80000000 { self.token_count ^ !0u32 } else { self.token_count } }
 }
@@ -115,11 +121,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
         
         if alt.matching_terms.len() == 0
         {
-            return Ok(ASTNode {
-                text : chosen_name_id,
-                children : Some(children),
-                token_count : (i - token_start) as u32,
-            });
+            return Ok(ASTNode::new(Some(children), (i - token_start) as u32, chosen_name_id));
         }
         
         let mut term_idx = 0;
@@ -223,11 +225,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                             if j < tokens.len()
                             {
                                 if *after { j += 1; }
-                                child = Ok(ASTNode {
-                                    text : global.g.points[*id].name_id,
-                                    children : Some(vec!()),
-                                    token_count : (j - i) as u32 ^ !0u32,
-                                });
+                                child = Ok(ASTNode::new(Some(vec!()), (j - i) as u32 ^ !0u32, global.g.points[*id].name_id));
                             }
                         }
                     }
@@ -246,10 +244,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                     {
                         if !alt.pruned
                         {
-                            children.push(ASTNode {
-                                text : tokens[i].text.clone(), children : None,
-                                token_count : 1,
-                            });
+                            children.push(ASTNode::new(None, 1, tokens[i].text));
                         }
                         //println!("munched {lit} at {i}");
                         i += 1;
@@ -260,10 +255,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                 {
                     if !alt.pruned
                     {
-                        children.push(ASTNode {
-                            text : tokens[i].text.clone(), children : None,
-                            token_count : 1,
-                        });
+                        children.push(ASTNode::new(None, 1, tokens[i].text));
                     }
                     //println!("munched {} at {i}", tokens[i].text);
                     i += 1;
@@ -289,10 +281,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                         }
                         MatchDirective::Any => if i < tokens.len()
                         {
-                            children.push(ASTNode {
-                                text : tokens[i].text.clone(), children : None,
-                                token_count : 1,
-                            });
+                            children.push(ASTNode::new(None, 1, tokens[i].text));
                             matched = true;
                             i += 1;
                         }
@@ -334,11 +323,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
         {
             token_count = token_count ^ !0u32;
         }
-        return Ok(ASTNode {
-            text : chosen_name_id,
-            children : Some(children),
-            token_count,
-        });
+        return Ok(ASTNode::new(Some(children), token_count, chosen_name_id));
     }
     
     Err(format!("Failed to match rule {} at token position {token_start}\n{:?}", global.g.string_cache_inv[chosen_name_id as usize],
