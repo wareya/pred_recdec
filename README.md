@@ -341,6 +341,6 @@ S {
 }
 ```
 
-TODO:
+## Future work
 
-- $hoist, $skip, $drop, $dropifempty, $rename
+Believe it or not, the fact that the Regex crate doesn't have a JIT is actually causing bottlenecks here. Crazy, I know. So if anyone knows of a DFA regex engine (not PCRE2! it's backtracking!) that has a Rust library and a JIT, let me know, I'll try it out.
