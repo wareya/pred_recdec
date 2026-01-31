@@ -7,10 +7,22 @@ type HashMap<K, V> = std::collections::HashMap::<K, V, crate::HashBuilder>;
 use crate::bnf::*;
 
 #[derive(Clone, Debug, Default)]
+/// AST node. Grammar rules have children, tokens do not.
+///
+/// The total structure of the AST is defined by the grammar that it was parsed with.
 pub struct ASTNode {
+    /// If `Some`, this node is a parent/nonterminal. If `None`, this node is a token/leaf/terminal.
     pub children : Option<Vec<ASTNode>>,
+    /// Due to error recovery, AST nodes can be marked as "poisoned".
+    ///
+    /// When a node is poisoned, its token count is XOR'd with !0u32 (all one-bits).
     pub token_count : u32, // IF POISONED: xor with !0u32 (all one-bits)
-    pub text : u32, // index into grammar.string_cache_inv
+    /// Index into grammar.string_cache_inv, giving an `Rc<String>`.
+    ///
+    /// For parents, it's the name of the associated grammar rule.
+    ///
+    /// For tokens, it's the token content (the *actual* token contents, but what it was matched with, i.e. it's not a regex).
+    pub text : u32,
 }
 
 impl ASTNode {
@@ -41,34 +53,40 @@ impl Drop for ASTNode {
 }
 */
 
+/// Result of a [`Guard`] checking if a given alternation should be taken or not.
 pub enum GuardResult {
-    Accept,
-    Reject,
+    /// The alternation is chosen.
+    #[allow(unused)] Accept,
+    /// The alternation is rejected.
+    #[allow(unused)] Reject,
+    /// The guard has preemptively decided the the parse is invalid at this state and position.
     #[allow(unused)] HardError(String)
 }
 
-
+/// Standard "AnyMap" for putting whatever you want in it.
 #[derive(Default)]
 pub struct AnyMap { map: HashMap<std::any::TypeId, Box<dyn std::any::Any>> }
 
 impl AnyMap {
-    pub fn insert<T: 'static>(&mut self, value: T) { self.map.insert(std::any::TypeId::of::<T>(), Box::new(value)); }
-    pub fn get<T: 'static>(&self) -> Option<&T> { self.map.get(&std::any::TypeId::of::<T>())?.downcast_ref::<T>() }
-    pub fn get_mut<T: 'static>(&mut self) -> Option<&mut T> { self.map.get_mut(&std::any::TypeId::of::<T>())?.downcast_mut::<T>() }
+    #[allow(unused)] pub fn insert<T: 'static>(&mut self, value: T) { self.map.insert(std::any::TypeId::of::<T>(), Box::new(value)); }
+    #[allow(unused)] pub fn get<T: 'static>(&self) -> Option<&T> { self.map.get(&std::any::TypeId::of::<T>())?.downcast_ref::<T>() }
+    #[allow(unused)] pub fn get_mut<T: 'static>(&mut self) -> Option<&mut T> { self.map.get_mut(&std::any::TypeId::of::<T>())?.downcast_mut::<T>() }
 }
 
-
+/// Exposable parts of current parser state.
 pub struct PrdGlobal<'a> {
-    pub guards : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>>,
-    pub hooks : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>>,
+    pub (crate) guards : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>>,
+    pub (crate) hooks : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>>,
     
+    /// Put your impure data here.
     #[allow(unused)] pub udata : AnyMap,
-    pub udata_r : HashMap<usize, RegexCacher>,
+    /// Put your impure data here (simple path for cached regexes).
+    #[allow(unused)] pub udata_r : HashMap<usize, RegexCacher>,
     
-    #[allow(unused)] pub g : &'a Grammar,
+    #[allow(unused)] pub (crate) g : &'a Grammar,
 }
 
-pub fn pred_recdec_parse_impl_recursive(
+pub (crate) fn pred_recdec_parse_impl_recursive(
     global : &mut PrdGlobal,
     gp_id : usize, tokens : &[Token], token_start : usize,
     depth : usize
@@ -83,7 +101,6 @@ pub fn pred_recdec_parse_impl_recursive(
     let mut i = token_start;
     
     let mut poisoned = false;
-    let mut pruned = false;
     
     #[cfg(feature = "parse_trace")] { println!("entered {} at {i}, depth {depth}", global.g.string_cache_inv[chosen_name_id as usize]); }
     
@@ -110,9 +127,9 @@ pub fn pred_recdec_parse_impl_recursive(
         let mut accepted = true;
         let first_term = alt.matching_terms.get(0);
         let first_term = first_term.as_ref().unwrap();
-        match first_term
+        match &first_term.t
         {
-            MatchingTerm::Guard(guard) =>
+            MatchingTermE::Guard(guard) =>
             {
                 accepted = false;
                 if let Some(f) = global.guards.get(&**guard)
@@ -131,7 +148,7 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 term_idx += 1;
             }
-            MatchingTerm::Peek(loc, tester) =>
+            MatchingTermE::Peek(loc, tester) =>
             {
                 accepted = false;
                 let loc = (i as isize + loc) as usize;
@@ -141,23 +158,23 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 term_idx += 1;
             }
-            MatchingTerm::PeekR(loc, tester) =>
+            MatchingTermE::PeekR(loc, tester) =>
             {
                 accepted = false;
                 let loc = (i as isize + loc) as usize;
                 //if loc < tokens.len() && tester.is_match(&global.g.string_cache_inv[tokens[loc].text as usize])
-                if loc < tokens.len() && tester.is_match_2(tokens[loc].text, &global.g.string_cache_inv)
+                if loc < tokens.len() && tester.is_match_interned(tokens[loc].text, &global.g.string_cache_inv)
                 {
                     accepted = true;
                 }
                 term_idx += 1;
             }
-            MatchingTerm::PeekRes(loc, tester) =>
+            MatchingTermE::PeekRes(loc, tester) =>
             {
                 accepted = false;
                 let loc = (i as isize + loc) as usize;
                 //if loc < tokens.len() && tester.is_match(&global.g.string_cache_inv[tokens[loc].text as usize])
-                if loc < tokens.len() && tester.is_match_2(tokens[loc].text, &global.g.string_cache_inv)
+                if loc < tokens.len() && tester.is_match_interned(tokens[loc].text, &global.g.string_cache_inv)
                 {
                     accepted = true;
                     if let Some(r) = &global.g.reserved
@@ -167,7 +184,7 @@ pub fn pred_recdec_parse_impl_recursive(
                 }
                 term_idx += 1;
             }
-            MatchingTerm::Eof =>
+            MatchingTermE::Eof =>
             {
                 accepted = i == tokens.len();
                 term_idx += 1;
@@ -188,9 +205,9 @@ pub fn pred_recdec_parse_impl_recursive(
         {
             let term = &alt.matching_terms[term_idx];
             let mut matched = false;
-            match term
+            match &term.t
             {
-                MatchingTerm::Rule(id) =>
+                MatchingTermE::Rule(id) =>
                 {
                     let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, i, depth + 1);
                     child = std::hint::black_box(child);
@@ -223,11 +240,11 @@ pub fn pred_recdec_parse_impl_recursive(
                     children.push(child);
                     matched = true;
                 }
-                MatchingTerm::TermLit(lit) =>
+                MatchingTermE::TermLit(lit) =>
                 {
                     if i < tokens.len() && tokens[i].text == *lit
                     {
-                        if !pruned
+                        if !alt.pruned
                         {
                             children.push(ASTNode {
                                 text : tokens[i].text.clone(), children : None,
@@ -239,9 +256,9 @@ pub fn pred_recdec_parse_impl_recursive(
                         matched = true;
                     }
                 }
-                MatchingTerm::TermRegex(regex) => if i < tokens.len() && regex.is_match_2(tokens[i].text, &global.g.string_cache_inv)
+                MatchingTermE::TermRegex(regex) => if i < tokens.len() && regex.is_match_interned(tokens[i].text, &global.g.string_cache_inv)
                 {
-                    if !pruned
+                    if !alt.pruned
                     {
                         children.push(ASTNode {
                             text : tokens[i].text.clone(), children : None,
@@ -252,13 +269,13 @@ pub fn pred_recdec_parse_impl_recursive(
                     i += 1;
                     matched = true;
                 }
-                MatchingTerm::Directive(d) =>
+                MatchingTermE::Directive(d) =>
                 {
                     match d
                     {
                         MatchDirective::Become | MatchDirective::BecomeAs =>
                         {
-                            if let Some(MatchingTerm::Rule(id)) = alt.matching_terms.get(term_idx + 1)
+                            if let Some(MatchingTermE::Rule(id)) = alt.matching_terms.get(term_idx + 1).map(|x| &x.t)
                             {
                                 g_item = &global.g.points[*id];
                                 #[cfg(feature = "parse_trace")] { println!("became {} at {i}, depth {depth}", g_item.name); }
@@ -279,11 +296,10 @@ pub fn pred_recdec_parse_impl_recursive(
                             matched = true;
                             i += 1;
                         }
-                        MatchDirective::Pruned => { pruned = true; matched = true; }
                         _ => panic!("TODO: {:?}", d), // also TODO: combine into parent match once all implemented
                     }
                 }
-                MatchingTerm::Hook(name) =>
+                MatchingTermE::Hook(name) =>
                 {
                     if let Some(f) = global.hooks.get(&**name)
                     {
@@ -329,7 +345,10 @@ pub fn pred_recdec_parse_impl_recursive(
         tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()))
 }
 
-/// Takes a fn that returns whether it's OK to also visit the children of this node.
+/// Visit the AST with a possibly-impure callback. The AST itself cannot be modified this way.
+///
+/// Takes a function that returns whether it's OK to also visit the children of this node.
+#[allow(unused)]
 pub fn visit_ast(n : &ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
 {
     let flag = f(n);
@@ -342,11 +361,28 @@ pub fn visit_ast(n : &ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
     }
 }
 
+/// Arguments:
+/// - `&mut PrdGlobal` - context
+/// - `&[Token]` - tokenstream
+/// - `usize` - position in tokenstream.
+pub type Guard = Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>;
+/// Arguments:
+/// - `&mut PrdGlobal` - context
+/// - `&[Token]` - tokenstream
+/// - `usize` - position in tokenstream.
+/// - `&mut Vec<ASTNode>` - current partially-produced AST item.
+pub type Hook = Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>;
+
 #[allow(unused)]
-pub fn pred_recdec_parse(
+/// Parse the given token stream (produced by [`bnf::tokenize`](`super::bnf::tokenize`)) into an AST, using the given [`bnf::Grammar`](`super::bnf::Grammar`), and taking the given root rule name as the starting point.
+///
+/// Guards and hooks are for advanced usage (e.g. parsing C).
+/// 
+/// See also: [`ASTNode`]
+pub fn parse(
     g : &Grammar, root_rule_name : &str, tokens : &[Token],
-    guards : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>>,
-    hooks : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>>,
+    guards : Rc<HashMap<String, Guard>>,
+    hooks : Rc<HashMap<String, Hook>>,
 ) -> Result<ASTNode, String>
 {
     let gp_id = g.by_name.get(root_rule_name).unwrap();
@@ -369,6 +405,7 @@ pub fn pred_recdec_parse(
 
 
 #[allow(unused)]
+/// For debugging only: print out the given AST.
 pub fn print_ast_pred_recdec(ast : &ASTNode, string_cache_inv : &Vec<Rc<String>>, indent : usize)
 {
     print!("{}", " ".repeat(indent));

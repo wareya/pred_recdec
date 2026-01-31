@@ -19,8 +19,8 @@ element ::=
    | A`[tfn]`r # true|false|null
 
 object ::=
-    @peek(1, "}") "{" "}"
-    | "{" members "}"
+    @peek(1, "}") $pruned "{" "}"
+    | $pruned "{" members "}"
 # $become is essentially an "optimized tail call". It tells the parser to continue in-place, but with the set of choices in the next rule.
 # The main reason is for building flat lists instead of deep recursive ones.
 # But it can also be used to clean up left-factorization, or split a given production/alternation into two choices partway through.
@@ -35,8 +35,8 @@ member ::=
     A`"`r ":" element
 
 array ::=
-    @peek(1, "]") "[" "]"
-    | "[" elements "]"
+    @peek(1, "]") $pruned "[" "]"
+    | $pruned "[" elements "]"
 # EXAMPLE OF AN IMPURE HOOK: If, for some reason, we wanted to log every non-empty array in the file, we could write:
 #    | "[" elements "]" !hook(log_array)
 # OR, if checking this alternation was nontrivial, we could write:
@@ -45,7 +45,7 @@ array ::=
 elements ::=
     element $become elementlist
 elementlist ::=
-    @auto "," element $become elementlist
+    @peek(0, ",") $pruned "," element $become elementlist
     | #empty
 
 string ::=

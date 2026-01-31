@@ -3,9 +3,8 @@
 #[cfg(test)]
 mod tests {
     use crate::bnf::*;
-    use crate::pred_recdec::*;
+    use crate::ast::*;
     use std::fs;
-
 
     #[test]
     fn test_perf() {
@@ -38,7 +37,7 @@ mod tests {
         println!("Tokenize time: {:?}", start2.elapsed());
         
         let start2 = std::time::Instant::now();
-        pred_recdec_parse(&g, "json", &tokens[..], guards.clone(), hooks.clone()).unwrap();
+        parse(&g, "json", &tokens[..], guards.clone(), hooks.clone()).unwrap();
         println!("Parse time: {:?}", start2.elapsed());
         println!("Total time: {:?}", start.elapsed());
         
@@ -93,7 +92,7 @@ mod tests {
                         ok_serde = _v2.is_ok();
                         
                         let tokens = tokenize(&mut g, content)?;
-                        pred_recdec_parse(&g, "json", &tokens[..], guards.clone(), hooks.clone())
+                        parse(&g, "json", &tokens[..], guards.clone(), hooks.clone())
                     };
                     
                     //println!("byte count {}", content.len());

@@ -2,10 +2,20 @@
 name = "pred-recdec"
 version = "0.1.0"
 edition = "2024"
+authors = ["<wareya@gmail.com>"]
+
+
+[lib]
+name = "pred_recdec"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pred_recdec"
+path = "src/main.rs"
+
 
 [dependencies]
 mimalloc = "0.1.48"
-pcre2 = "0.2.11"
 regex = "=1.8" # much faster than any other version series
 rustc-hash = "2.1.1"
 
