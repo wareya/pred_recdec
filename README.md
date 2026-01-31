@@ -11,6 +11,8 @@ Rationale:
 - Parser generators that *do* handle both impurity and local ambiguity are usually a nightmare to debug, because impurity and local ambiguity don't play nice together
 - The grammar is smaller and easier to analyze (including formally) than a handwritten parser, but just as powerful
 
+This interprets the grammar over the input text, so you don't need a code generation/compilation step. This works well but has a performance impact; the resulting parsing system is about 50~400% slower than native code. For most applications, that's perfectly OK. If this idea picks up I might work on code generation as its own thing.
+
 I wrote a working C99 grammar (src/grammar.txt). It successfully parses the preprocessor output of both gcc and clang `#include`-ing a kitchen sink worth of stdlib headers. This mirrors how most high-performance parsers are written today, just in a BNF shell.
 
 This is *not* a PEG or packrat thing. It's more like "handwrite an LL(k) parser".
