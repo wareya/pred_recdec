@@ -34,6 +34,8 @@ This is *not* a PEG or packrat thing. It's more like "handwrite an LL(k) parser"
 
 MIT OR Apache-2.0 OR CC0-1.0 OR 0BSD
 
+The `c_tests` folder is not covered by these licenses.
+
 ## Mini documentation
 
 aka pred recdec
