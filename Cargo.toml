@@ -3,6 +3,12 @@ name = "pred-recdec"
 version = "0.1.0"
 edition = "2024"
 authors = ["<wareya@gmail.com>"]
+license = "MIT OR Apache-2.0 OR CC0-1.0 OR 0BSD"
+keywords = ["parsing", "parser"]
+repository = "https://github.com/wareya/pred_recdec/"
+categories = ["parsing"]
+description = "Predicated Recursive Descent Parsing with BNF and impure hooks"
+include = ["/src"]
 
 
 [lib]

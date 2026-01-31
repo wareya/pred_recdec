@@ -1,3 +1,7 @@
 /target
 /json_bench/*.json
 /json_tests/*.json
+/clang_tests/
+/gcc_tests/
+/etc/
+flamegraph.svg
