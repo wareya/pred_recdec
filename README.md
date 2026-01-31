@@ -17,7 +17,7 @@ I wrote a working C99 grammar (src/grammar.txt). It successfully parses the prep
 
 This is *not* a PEG or packrat thing. It's more like "handwrite an LL(k) parser". This mirrors how most high-performance parsers are written today, just in a BNF shell.
 
-**Performance**: Roughly the same parsing time as Clang and GCC `-fsyntax-only -ftime-report` on a 5.6MB C source file, tested with the included grammar (src/grammar.txt).
+**Performance**: Faster than Clang and GCC `-fsyntax-only -ftime-report` on a 5.6MB C source file, slower than  `-fsyntax-only` (no time report instrumentation), tested with the included grammar (src/grammar.txt).
 
 **Features**:
 
