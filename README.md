@@ -30,6 +30,10 @@ This is *not* a PEG or packrat thing. It's more like "handwrite an LL(k) parser"
 - Always perfect linear O(n) parse time unless you specifically write a worse-than-linear hook yourself
 - Support for "optimized tail calls" and LR-like "reductions" with $become and $become_as (respectively)
 
+## License
+
+MIT OR Apache-2.0 OR CC0-1.0 OR 0BSD
+
 ## Mini documentation
 
 aka pred recdec
