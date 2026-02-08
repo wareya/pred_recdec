@@ -1,6 +1,10 @@
 
 ## Pred Recdec
 
+docs.rs: https://docs.rs/pred-recdec/0.1.0/pred_recdec/
+
+crates.io: https://crates.io/crates/pred-recdec
+
 Predicated recursive descent parsing framework. Write 95% of your parser in BNF and get rid of the boilerplate. Write the remaining 5% in custom hooks.
 
 Rationale:
