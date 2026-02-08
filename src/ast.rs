@@ -11,7 +11,7 @@ use crate::bnf::*;
 ///
 /// The total structure of the AST is defined by the grammar that it was parsed with.
 ///
-/// Why isn't this an enum? Option<Vec<ASTNode>> and other two-variant enums containing a Vec undergo niche optimization. If this were `enum ASTNode { Rule{...}, Token(u32) }` then it would look like you can just add a third variant (e.g. poisoned) without issue. However, doing that would actually increase the size of the ASTNode from 32 bytes to 40 bytes.
+/// Why isn't this an enum? `Option<Vec<ASTNode>>` and other two-variant enums containing a Vec undergo niche optimization. If this were `enum ASTNode { Rule{...}, Token(u32) }` then it would look like you can just add a third variant (e.g. poisoned) without issue. However, doing that would actually increase the size of the ASTNode from 32 bytes to 40 bytes.
 /// 
 /// If the size is ever forced above 32 bytes (e.g. increasing token count from u32 to u64) then I'll probably change it to an enum.
 #[non_exhaustive]
@@ -92,14 +92,36 @@ pub struct PrdGlobal<'a> {
     #[allow(unused)] pub (crate) g : &'a Grammar,
 }
 
+/// Parser error state.
+#[derive(Clone, Debug)]
+pub struct PrdError {
+    /// Human-readable error message. Format is not guaranteed and may change arbitrarily.
+    #[allow(unused)] pub err_message : String,
+    /// How far into the token stream did we successfully parse? Note: this is NOT
+    #[allow(unused)] pub token_index : usize,
+    /// Which rule's alternations were we inside of? (Index into [`bnf::Grammar::points`](`super::bnf::Grammar::points`))
+    #[allow(unused)] pub rule : u32,
+    /// Which alternation was it?
+    ///
+    /// If `u16::MAX`, we errored out before entering an alternation.
+    ///
+    /// If past the end of the grammar point's list of alternations, then every alternation was checked and failed.
+    #[allow(unused)] pub in_alt : u16,
+    /// Where were we inside of that alternation?
+    ///
+    /// If "None", we errored on a guard/lookahead test.
+    #[allow(unused)] pub alt_progress : Option<u16>,
+    /// On behalf of what rule were we parsing for? (e.g. the parent of a `$become`)
+    #[allow(unused)] pub on_behalf_of_rule : u32,
+}
+
 pub (crate) fn pred_recdec_parse_impl_recursive(
     global : &mut PrdGlobal,
     gp_id : usize, tokens : &[Token], token_start : usize,
     depth : usize
-) -> Result<ASTNode, String>
+) -> Result<ASTNode, PrdError>
 {
-    const DEPTH_LIMIT : usize = 1000;
-    if depth > DEPTH_LIMIT { return Err(format!("Exceeded recursion depth limit of {DEPTH_LIMIT}.")); }
+    const DEPTH_LIMIT : usize = if cfg!(debug_assertions) { 300 } else { 1000 };
     let mut g_item = &global.g.points[gp_id];
     let mut chosen_name_id = g_item.name_id;
     
@@ -107,13 +129,22 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
     let mut i = token_start;
     
     let mut poisoned = false;
+    let mut alt_id : usize = 0;
+    
+    macro_rules! build_err { ($x:expr, $prog:expr) => {
+        Err(PrdError {
+            err_message : $x, token_index : i, rule : g_item.name_id, on_behalf_of_rule : chosen_name_id,
+            in_alt : alt_id.wrapping_sub(1) as u16, alt_progress : $prog
+        })
+    } }
+    
+    if depth > DEPTH_LIMIT { return build_err!(format!("Exceeded recursion depth limit of {DEPTH_LIMIT}."), None); }
     
     #[cfg(feature = "parse_trace")] { println!("entered {} at {i}, depth {depth}", global.g.string_cache_inv[chosen_name_id as usize]); }
     
     // Structured this way for the sake of $become
     // 1) We can't use an iterator because then we can't go back to alternation 0.
     // 2) We can't have a "find alt" loop followed by a non-loop process block because then we can't go back to the "find alt" loop during $BECOME.
-    let mut alt_id = 0;
     'top: while alt_id < g_item.forms.len()
     {
         let alt = &g_item.forms[alt_id];
@@ -140,13 +171,13 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                     match f(global, tokens, i)
                     {
                         GuardResult::Accept => accepted = true,
-                        GuardResult::HardError(e) => { return Err(e); }
+                        GuardResult::HardError(e) => build_err!(e, None)?,
                         _ => {}
                     }
                 }
                 else
                 {
-                    return Err(format!("Unknown guard {guard}"));
+                    return build_err!(format!("Unknown guard {guard}"), None);
                 }
                 term_idx += 1;
             }
@@ -229,7 +260,8 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                             }
                         }
                     }
-                    let child = child.map_err(|e| format!("In {}: {e}", g_item.name))?;
+                    //let child = child.map_err(|e| format!("In {}: {e}", g_item.name))?;
+                    let child = child?;
                     if child.is_poisoned()
                     {
                         poisoned = true;
@@ -296,23 +328,38 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                         match f(global, tokens, i, &mut children)
                         {
                             Ok(consumed) => { i += consumed; }
-                            Err(e) => Err(e)?
+                            Err(e) => build_err!(e, Some(term_idx as u16))?
                         }
                     }
                     else
                     {
-                        Err(format!("Unknown custom hook {:?} inside of {}", name, global.g.string_cache_inv[chosen_name_id as usize]))?
+                        build_err!(
+                            format!("Unknown custom hook {:?} inside of {}",
+                                name, global.g.string_cache_inv[chosen_name_id as usize]
+                            ),
+                            Some(term_idx as u16)
+                        )?
                     }
                     matched = true;
                 }
-                _ => Err(format!("Term type {:?} not supported in this position in a rule (context: {})", term, global.g.string_cache_inv[chosen_name_id as usize]))?
+                _ => build_err!(
+                        format!("Term type {:?} not supported in this position in a rule (context: {})",
+                            term, global.g.string_cache_inv[chosen_name_id as usize]
+                        ),
+                        Some(term_idx as u16)
+                    )?
             }
             if !matched
             {
-                Err(format!("Failed to match token at {i} in rule {} alt {alt_id}. Token is `{:?}`.\n{:?}",
-                    global.g.string_cache_inv[chosen_name_id as usize],
-                    tokens.get(i).map(|x| global.g.string_cache_inv[x.text as usize].clone()),
-                    tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()))?
+                build_err!(
+                    format!("Failed to match token at {i} in rule {} alt {alt_id}. Token is `{:?}`.\n{:?}",
+                        global.g.string_cache_inv[chosen_name_id as usize],
+                        tokens.get(i).map(|x| global.g.string_cache_inv[x.text as usize].clone()),
+                        tokens[token_start..tokens.len().min(token_start+15)].iter()
+                            .map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()
+                    ),
+                    Some(term_idx as u16)
+                )?
             }
             term_idx += 1;
         }
@@ -326,8 +373,12 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
         return Ok(ASTNode::new(Some(children), token_count, chosen_name_id));
     }
     
-    Err(format!("Failed to match rule {} at token position {token_start}\n{:?}", global.g.string_cache_inv[chosen_name_id as usize],
-        tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()))
+    build_err!(
+        format!("Failed to match rule {} at token position {token_start}\n{:?}", global.g.string_cache_inv[chosen_name_id as usize],
+            tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()
+        ),
+        Some(g_item.forms.len() as u16)
+    )
 }
 
 /// Visit the AST with a possibly-impure callback. The AST itself cannot be modified this way.
@@ -368,7 +419,7 @@ pub fn parse(
     g : &Grammar, root_rule_name : &str, tokens : &[Token],
     guards : Rc<HashMap<String, Guard>>,
     hooks : Rc<HashMap<String, Hook>>,
-) -> Result<ASTNode, String>
+) -> Result<ASTNode, PrdError>
 {
     let gp_id = g.by_name.get(root_rule_name).unwrap();
     let mut global = PrdGlobal {

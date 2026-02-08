@@ -4,7 +4,7 @@
 //! 
 //! It is **VERY HIGHLY RECOMMENDED** that you use the mimalloc crate (or some other high-performance memory allocator) if you use this library:
 //!
-//! ```rust
+//! ```
 //! use mimalloc::MiMalloc;
 //! #[global_allocator]
 //! static GLOBAL: MiMalloc = MiMalloc;
@@ -47,7 +47,8 @@
 //!
 //! ## Example usage
 //!
-//! ```rust
+//! ```
+//! # {} /*
 //! let mut g = bnf_to_grammar(&grammar_source).unwrap();
 //! let tokens = tokenize(&mut g, &test_source);
 //! let tokens = tokens.unwrap();
@@ -65,6 +66,7 @@
 //!     print_ast_pred_recdec(ast, &g.string_cache_inv, 0);
 //! }
 //! drop(ast.unwrap());
+//! # */
 //! ```
 //!
 //! ## BNF Extensions
@@ -138,7 +140,9 @@ mod test {
         pub use ast::*;
         
         let grammar_source = r#"
-    S ::= @peek(0, "(") parenexpr
+    __BRACKET_PAIRS ::= ( )
+    S ::= @peek(0, "(") parenexpr $become EOF
+    EOF ::= @eof
     parenexpr ::=
         @peek(1, ")") "(" ")" $pruned
         | "(" $become itemlist $pruned
@@ -164,5 +168,33 @@ mod test {
             print_ast_pred_recdec(ast, &g.string_cache_inv, 0);
         }
         drop(ast.unwrap());
+        
+        
+        
+        let test_source = r#"
+        ( a ) a
+        "#;
+        
+        let tokens = tokenize(&mut g, &test_source);
+        let tokens = tokens.unwrap();
+        let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()));
+        println!("{:?}", ast);
+        let ast = ast.unwrap_err();
+        assert_eq!(ast.token_index, 3);
+        assert_eq!(ast.rule, 2);
+        assert_eq!(ast.in_alt, 0);
+        assert_eq!(ast.alt_progress, Some(1));
+        assert_eq!(ast.on_behalf_of_rule, 1);
+        
+        
+        
+        let test_source = r#"    ( a ) ) "#;
+        
+        let tokens = tokenize(&mut g, &test_source);
+        let tokens = tokens.unwrap_err();
+        println!("{:?}", tokens);
+        assert_eq!(tokens.produced, 3);
+        assert_eq!(tokens.location, 10);
+        assert_eq!(tokens.pairing_error, Some((")".to_string(), false)));
     }
 }

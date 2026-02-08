@@ -719,6 +719,29 @@ pub (crate) fn build_literal_regex(literals : &Vec<String>, terminated : bool) -
     text_token_regex
 }
 
+/// Tokenizer error state.
+#[derive(Clone, Debug)]
+pub struct TokError {
+    /// Human-readable error message. Format is not guaranteed and may change arbitrarily.
+    #[allow(unused)] pub err_message : String,
+    /// Number of tokens produced so far.
+    #[allow(unused)] pub produced : usize,
+    /// At what byte index in the input string did tokenization fail to continue?
+    #[allow(unused)] pub location : usize,
+    /// Pairing error: if tokenization failed because of failing to pair brackets:
+    ///
+    /// responsible token text, openness
+    ///
+    /// If the bool is true, then the failed pairing is "open", like the string `(`. Otherwise, it's "closed", like `())`.
+    ///
+    /// The resonsible token is the token responsible for noticing the error, not the token that's "missing". E.g. for `())` it's `")"`.
+    ///
+    /// It is currently unspecified whether non-nested overlaps like `( { ) }` trigger an error. Presently, they don't.
+    ///
+    /// KNOWN BUG: "open" failed pairings like `(` do not currently produce errors. They will become errors in a future version.
+    #[allow(unused)] pub pairing_error : Option<(String, bool)>,
+}
+
 /// Scans the given string and produces a stream of [`Token`]s.
 ///
 /// Next step: [`ast::parse`](`super::ast::parse`).
@@ -727,7 +750,7 @@ pub (crate) fn build_literal_regex(literals : &Vec<String>, terminated : bool) -
 pub fn tokenize(
     g : &mut Grammar,
     mut s : &str
-) -> Result<Vec<Token>, String>
+) -> Result<Vec<Token>, TokError>
 {
     let s_orig = s;
     let mut tokens = Vec::<Token>::new();
@@ -892,7 +915,12 @@ pub fn tokenize(
         if longest == 0
         {
             let sn : String = s.chars().take(5).collect();
-            return Err(format!("Failed to tokenize at index {}:{}[...]", s_orig.len()-s.len(), sn));
+            return Err(TokError {
+                err_message: format!("Failed to tokenize at index {}:{}[...]", s_orig.len()-s.len(), sn),
+                produced : tokens.len(),
+                location : s_orig.len() - s.len(),
+                pairing_error : None,
+            });
         }
         
         //let text_info = string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &s[..longest]);
@@ -914,11 +942,29 @@ pub fn tokenize(
             {
                 s.push(tokens.len());
             }
-            if let Some(l) = closers.get(&text) && let Some(s) = stacks.get_mut(l)
+            if let Some(l) = closers.get(&text) && let Some(stack) = stacks.get_mut(l)
             {
-                let n = s.pop().ok_or_else(|| format!("Unmatched delimiter at {}: {}", s_orig.len() - s.len(), g.string_cache_inv.get(text as usize).unwrap()))?;
+                let n = match stack.pop() {
+                    Some(n) => n,
+                    None => Err(TokError {
+                        err_message: format!("Unmatched delimiter at {}: {}", s_orig.len() - s.len(), g.string_cache_inv.get(text as usize).unwrap()),
+                        produced : tokens.len(),
+                        location : s_orig.len() - s.len(),
+                        pairing_error : Some((s[..longest].to_string(), false)),
+                    })?,
+                };
+                //.ok_or_else(|| )?;
+                
                 let me = tokens.len();
-                let diff = me.checked_signed_diff(n).ok_or_else(|| format!("Input too long"))?;
+                let diff = match me.checked_signed_diff(n) {
+                    Some(n) => n,
+                    None => Err(TokError {
+                        err_message: format!("Input too long"),
+                        produced : tokens.len(),
+                        location : s_orig.len() - s.len(),
+                        pairing_error : None,
+                    })?,
+                };
                 token.pair = -diff;
                 tokens[n].pair = diff;
             }
