@@ -1,7 +1,7 @@
 
 ## Pred Recdec
 
-docs.rs: https://docs.rs/pred-recdec/0.1.0/pred_recdec/
+docs.rs: https://docs.rs/pred-recdec/latest/pred_recdec/
 
 crates.io: https://crates.io/crates/pred-recdec
 
