@@ -434,25 +434,6 @@ fn main()
         }
     ));
     
-    hooks.insert("many_balanced".to_string(),
-        Rc::new(|_global : &mut PrdGlobal, tokens : &[Token], mut i : usize, children : &mut Vec<ASTNode>|
-        {
-            let mut balance = 0;
-            let start = i;
-            while i < tokens.len() && balance >= 0
-            {
-                if tokens[i].pair > 0 { balance += 1; }
-                else if tokens[i].pair < 0 { balance -= 1; }
-                if balance >= 0
-                {
-                    children.push(ASTNode::new(None, 1, tokens[i].text));
-                    i += 1;
-                }
-            }
-            Ok(i-start)
-        }
-    ));
-    
     hooks.insert("fix_infix_precedence".to_string(),
         Rc::new(move |_global : &mut PrdGlobal, _tokens : &[Token], mut _i : usize, children : &mut Vec<ASTNode>|
         {
