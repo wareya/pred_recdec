@@ -26,7 +26,7 @@ declaration_specifiers_star_guarded ::=
     @guard(is_declaration_indicator) declaration_specifier $become declaration_specifiers_star
     | #empty
 declaration_specifier ::=
-    @peekr(0, r`typedef|extern|static|__extension__|auto|register`r) storage_class_specifier $become attribute_list
+    @peekr(0, r`typedef|extern|static|auto|register`r) storage_class_specifier $become attribute_list
     | @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict__|volatile`r) type_qualifier $become attribute_list
     | @peekr(0, r`inline|__inline__|__inline`r) function_specifier $become attribute_list
     | type_specifier $become attribute_list
@@ -37,7 +37,7 @@ attribute_list ::=
     | #empty
 
 storage_class_specifier ::=
-    @auto R`typedef|extern|static|__extension__|auto|register`r
+    @auto R`typedef|extern|static|auto|register`r
 type_specifier ::=
     @auto R`void|char|short|int|__builtin_va_list|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary`r
     | @peek(0, "enum") enum_specifier

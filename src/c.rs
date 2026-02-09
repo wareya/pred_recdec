@@ -87,7 +87,7 @@ mod tests
                 let nj = &tokens[i].text;
                 //let n = &global.g.string_cache_inv[*nj as usize];
                 let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(new_regex(
-                    r#"(?x)\A(?:typeof|__typeof__|void|__extension__
+                    r#"(?x)\A(?:typeof|__typeof__|void
                     |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|_Float16|__bf16|__int128|const|volatile|__volatile__
                     |enum|struct|union)\z"#
                 ).unwrap()));
@@ -132,7 +132,7 @@ mod tests
                     let nj = &tokens[i].text;
                     //let n = &global.g.string_cache_inv[*nj as usize];
                     let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new(new_regex(
-                        r#"(?x)\A(?:typeof|__typeof__|typedef|extern|__extension__
+                        r#"(?x)\A(?:typeof|__typeof__|typedef|extern
                         |__builtin_va_list|static|auto|register|const|restrict
                         |__cdecl|__stdcall
                         |__restrict__|volatile|__volatile__|__inline__|__inline|inline|void|char|short
