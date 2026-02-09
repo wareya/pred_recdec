@@ -126,7 +126,6 @@
 pub mod bnf;
 pub mod ast;
 mod json;
-mod c;
 
 // Thing
 pub (crate) use rustc_hash::FxBuildHasher as HashBuilder;

@@ -89,7 +89,7 @@ pub struct PrdGlobal<'a> {
     /// Put your impure data here (simple path for cached regexes).
     #[allow(unused)] pub udata_r : HashMap<usize, RegexCacher>,
     
-    #[allow(unused)] pub (crate) g : &'a Grammar,
+    #[allow(unused)] pub g : &'a Grammar,
 }
 
 /// Parser error state.

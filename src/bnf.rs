@@ -12,7 +12,8 @@ pub (crate) fn get_char_at_byte(s : &str, i : usize) -> char
 {
     s[i..].chars().next().unwrap()
 }
-pub (crate) fn new_regex(s : &str) -> Result<Regex, regex::Error>
+/// One-to-one wrapper around Regex::new().
+pub fn new_regex(s : &str) -> Result<Regex, regex::Error>
 //pub (crate) fn new_regex(s : &str) -> Result<Regex, pcre2::Error>
 {
     Regex::new(s)

@@ -11,7 +11,6 @@ mod ast;
 use ast::*;
 
 mod json;
-mod c;
 
 fn main() {
     let grammar_source = r#"

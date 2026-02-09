@@ -18,7 +18,12 @@ path = "src/lib.rs"
 [[bin]]
 name = "pred_recdec"
 path = "src/main.rs"
+test = false
 
+[[bin]]
+name = "c_parser_test"
+path = "src/c.rs"
+test = false
 
 [dependencies]
 mimalloc = "0.1.48"
