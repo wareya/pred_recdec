@@ -102,12 +102,17 @@
 //! - `@recover_before` - Same, but stops right before accepting any seek token instead of consuming it.
 //! 
 //! Terms starting with `$` are directives:
-//! - `$become nonterminal` performs a tail call, keeping the current AST node name. This can be used to build lists without smashing the stack.
-//! - `$become_as nonterminal` performs a tail call, replacing the current AST node's name with that of the target.
-//! - `$any` matches and includes any one token as a terminal.
-//! - `$pruned` specifies that this particular production doesn't generate AST nodes for bare terminals. This is useful for reducing AST bloat. For example, `@peek(1, ")") "(" ")" $pruned` is a non-empty production but produces zero AST nodes.
+//!- `$become nonterminal` performs a tail call, keeping the current AST node name. This can be used to build lists without smashing the stack.
+//!- `$become_as nonterminal` performs a tail call, replacing the current AST node's name with that of the target.
+//!- `$any` matches and includes any one token as a terminal.
+//!- `$pruned` specifies that this particular production doesn't generate AST nodes for bare terminals. This is useful for reducing AST bloat. For example, `@peek(1, ")") "(" ")" $pruned` is a non-empty production but produces zero AST nodes.
+//!- `$hoist` deletes the most recent child and moves its children into the current AST node's child list.
+//!- `$hoist_unit` does the same, but only if the child has exactly one child.
+//!- `$drop` deletes the most recent child.
+//!- `$drop_empty` does the same, but only if the child has exactly zero children.
+//!- `$rename nonterminal` renames the current AST node, giving it the same name as `nonterminal` but does NOT invoke a run of parsing `nonterminal` (i.e. it's skipped over).
 //! 
-//! You'll note that there's no "negative rule-match-check predicate" extension (e.g. no "parse A, but only if it doesn't also parse B"). This is by design. Rule-level negation is way too powerful, and requires an extremely sophisticated parser generator (e.g. packrat) to handle properly. For any reasonably simple implementation, it would be incompatible with impure hooks. `__RESERVED_WORDS`, described below, is the only exception, because it's easy to define in a sane way.
+//! You'll note that there's no "negative rule-match-check predicate" extension (e.g. no "parse A, but only if it doesn't also parse B"). This is by design. Rule-level negation is way too powerful, and requires an extremely sophisticated parser generator (e.g. packrat) to handle both correctly and cheaply. For any reasonably simple implementation, it would be incompatible with impure hooks. `__RESERVED_WORDS`, described below, is the only exception, because it's easy to define in a sane way.
 //!
 //! For negative token predicates (peeks), you can refactor the grammar slightly, or if it's a particularly complicated peek, write a custom guard. So this isn't a limitation.
 //!
