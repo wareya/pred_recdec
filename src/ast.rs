@@ -317,13 +317,49 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                                 continue 'top;
                             }
                         }
+                        MatchDirective::Rename => if let Some(MatchingTermE::Rule(id)) = alt.matching_terms.get(term_idx + 1).map(|x| &x.t)
+                        {
+                            chosen_name_id = *id as u32;
+                            term_idx += 1;
+                            matched = true;
+                        }
+                        MatchDirective::Drop => if children.len() > 0
+                        {
+                            children.pop();
+                            matched = true;
+                        }
+                        MatchDirective::DropIfEmpty => if children.len() > 0
+                        {
+                            if matches!(children.last().unwrap().children, Some(_))
+                            {
+                                children.pop();
+                            }
+                            matched = true;
+                        }
+                        MatchDirective::Hoist => if children.len() > 0
+                        {
+                            let x = children.pop().unwrap();
+                            if let Some(mut c) = x.children
+                            {
+                                children.append(&mut c);
+                            }
+                            matched = true;
+                        }
+                        MatchDirective::HoistIfUnit => if children.len() > 0
+                        {
+                            let x = children.pop().unwrap();
+                            if let Some(mut c) = x.children && c.len() == 1
+                            {
+                                children.append(&mut c);
+                            }
+                            matched = true;
+                        }
                         MatchDirective::Any => if i < tokens.len()
                         {
                             children.push(ASTNode::new(None, 1, tokens[i].text));
                             matched = true;
                             i += 1;
                         }
-                        _ => panic!("TODO: {:?}", d), // also TODO: combine into parent match once all implemented
                     }
                 }
                 MatchingTermE::Hook(name) =>
@@ -466,4 +502,30 @@ pub fn print_ast_pred_recdec(ast : &ASTNode, string_cache_inv : &Vec<Rc<String>>
     {
         println!("{}", string_cache_inv[ast.text as usize]);
     }
+}
+
+#[allow(unused)]
+/// For testing only: convert the AST's shape to a string.
+///
+/// Parents turn into `+<contents>-`. If poisoned (i.e. containing any error recovery), they're prefixed with `p`.
+///
+/// Leaves turn into `.`
+pub fn ast_to_shape_string(ast : &ASTNode) -> String
+{
+    let mut s = "".to_string();
+    if let Some(c) = &ast.children
+    {
+        if ast.is_poisoned() { s += "p"; }
+        s += "+";
+        for c in c.iter()
+        {
+            s += &ast_to_shape_string(c);
+        }
+        s += "-";
+    }
+    else
+    {
+        s += ".";
+    }
+    s
 }

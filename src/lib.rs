@@ -106,7 +106,6 @@
 //! - `$become_as nonterminal` performs a tail call, replacing the current AST node's name with that of the target.
 //! - `$any` matches and includes any one token as a terminal.
 //! - `$pruned` specifies that this particular production doesn't generate AST nodes for bare terminals. This is useful for reducing AST bloat. For example, `@peek(1, ")") "(" ")" $pruned` is a non-empty production but produces zero AST nodes.
-//! - TODO: `$hoist`, `$drop`, `$dropifempty`, `$rename`
 //! 
 //! You'll note that there's no "negative rule-match-check predicate" extension (e.g. no "parse A, but only if it doesn't also parse B"). This is by design. Rule-level negation is way too powerful, and requires an extremely sophisticated parser generator (e.g. packrat) to handle properly. For any reasonably simple implementation, it would be incompatible with impure hooks. `__RESERVED_WORDS`, described below, is the only exception, because it's easy to define in a sane way.
 //!
@@ -177,7 +176,7 @@ mod test {
         let tokens = tokenize(&mut g, &test_source);
         let tokens = tokens.unwrap();
         let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()));
-        println!("{:?}", ast);
+        //println!("{:?}", ast);
         let ast = ast.unwrap_err();
         assert_eq!(ast.token_index, 3);
         assert_eq!(ast.rule, 2);
@@ -191,9 +190,34 @@ mod test {
         
         let tokens = tokenize(&mut g, &test_source);
         let tokens = tokens.unwrap_err();
-        println!("{:?}", tokens);
+        //println!("{:?}", tokens);
         assert_eq!(tokens.produced, 3);
         assert_eq!(tokens.location, 10);
         assert_eq!(tokens.pairing_error, Some((")".to_string(), false)));
+        
+        
+        
+        let grammar_source = r#"
+    S ::= NUL a2 a $drop a a $hoist a $drop_empty NUL $drop_empty a2 a $hoist_unit a2 $hoist_unit EOF $drop
+    EOF ::= @eof
+    NUL ::=
+    a ::= "a"
+    a2 ::= "a" "a" $rename ax
+    ax ::= #dummy
+        "#;
+        let mut g = bnf_to_grammar(&grammar_source).unwrap();
+        
+        let test_source = r#"aaa a a aa a aaa"#;
+        
+        let tokens = tokenize(&mut g, &test_source);
+        let tokens = tokens.unwrap();
+        let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()));
+        let ast = ast.unwrap();
+        print_ast_pred_recdec(&ast, &g.string_cache_inv, 0);
+        let s = ast_to_shape_string(&ast);
+        println!("{}", s);
+        assert_eq!(s, "++-+..-+.-.+..-.-");
+        
+        assert_eq!(*g.string_cache_inv[ast.children.unwrap()[1].text as usize], "ax");
     }
 }

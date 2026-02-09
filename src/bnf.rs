@@ -160,7 +160,7 @@ pub struct Alternation {
 
 #[derive(Debug, Clone)]
 pub(crate) enum MatchDirective {
-    Any, Become, BecomeAs, Hoist, Drop, DropIfEmpty, Rename,
+    Any, Become, BecomeAs, Hoist, HoistIfUnit, Drop, DropIfEmpty, Rename,
 }
 
 #[derive(Debug, Clone)]
@@ -598,6 +598,31 @@ pub (crate) fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Resul
                 if matches!(&**term_str, "$BECOME_AS" | "$become_as")
                 {
                     matching_terms.push(MatchingTermE::Directive(MatchDirective::BecomeAs).to());
+                    continue;
+                }
+                if matches!(&**term_str, "$HOIST" | "$hoist")
+                {
+                    matching_terms.push(MatchingTermE::Directive(MatchDirective::Hoist).to());
+                    continue;
+                }
+                if matches!(&**term_str, "$HOIST_UNIT" | "$hoist_unit")
+                {
+                    matching_terms.push(MatchingTermE::Directive(MatchDirective::HoistIfUnit).to());
+                    continue;
+                }
+                if matches!(&**term_str, "$DROP" | "$drop")
+                {
+                    matching_terms.push(MatchingTermE::Directive(MatchDirective::Drop).to());
+                    continue;
+                }
+                if matches!(&**term_str, "$DROP_EMPTY" | "$drop_empty")
+                {
+                    matching_terms.push(MatchingTermE::Directive(MatchDirective::DropIfEmpty).to());
+                    continue;
+                }
+                if matches!(&**term_str, "$RENAME" | "$rename")
+                {
+                    matching_terms.push(MatchingTermE::Directive(MatchDirective::Rename).to());
                     continue;
                 }
                 if matches!(&**term_str, "$ANY" | "$any")

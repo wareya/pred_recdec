@@ -193,7 +193,6 @@ Terms starting with `$` are directives:
 - `$become_as nonterminal` performs a tail call, replacing the current AST node's name with that of the target.
 - `$any` matches and includes any one token as a terminal.
 - `$pruned` specifies that this particular production doesn't generate AST nodes for bare terminals. This is useful for reducing AST bloat. For example, `@peek(1, ")") "(" ")" $pruned` is a non-empty production but produces zero AST nodes.
-- TODO: `$hoist`, `$drop`, `$dropifempty`, `$rename`
 
 You'll note that there's no "negative rule-match-check predicate" extension (e.g. no "parse A, but only if it doesn't also parse B"). This is by design. Rule-level negation is way too powerful, and requires an extremely sophisticated parser generator (e.g. packrat) to handle properly. For any reasonably simple implementation, it would be incompatible with impure hooks. `__RESERVED_WORDS`, described below, is the only exception, because it's easy to define in a sane way.
 
