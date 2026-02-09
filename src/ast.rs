@@ -121,7 +121,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
     depth : usize
 ) -> Result<ASTNode, PrdError>
 {
-    const DEPTH_LIMIT : usize = if cfg!(debug_assertions) { 300 } else { 1000 };
+    const DEPTH_LIMIT : usize = if cfg!(debug_assertions) { 300 } else { 1200 };
     let mut g_item = &global.g.points[gp_id];
     let mut chosen_name_id = g_item.name_id;
     
@@ -260,7 +260,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                             }
                         }
                     }
-                    const FAT_ERRS : bool = true;
+                    const FAT_ERRS : bool = false;
                     if FAT_ERRS
                     {
                         child = child.map_err(|e| {

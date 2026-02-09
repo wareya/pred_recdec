@@ -48,7 +48,7 @@ type_qualifier ::=
     @auto R`const|restrict|__cdecl|__stdcall|__restrict__|volatile`r
 
 typeof_specifier ::=
-    R`typeof|__typeof__`r "(" !hook(many_balanced) ")"
+    R`typeof|__typeof__`r "(" many_balanced ")"
 struct_or_union_specifier ::=
     struct_or_union $become struct_or_union_specifier_next
 struct_or_union_specifier_next ::=
@@ -63,7 +63,8 @@ struct_or_union_specifier_info2 ::=
 struct_or_union ::=
     @auto "struct" | "union"
 struct_declaration_list ::=
-    struct_declaration $become struct_declaration_star
+    @peek(0, "}") #empty
+    | struct_declaration $become struct_declaration_star
 struct_declaration_star ::=
     @peek(0, "}") #empty (FOLLOW set logic)
     | struct_declaration $become struct_declaration_star
@@ -287,7 +288,7 @@ designator ::=
 
 primary_expression ::=
     @peekr(0, r`[L]?\x22.*\x22`r) string_literal
-    | @auto "_Generic" "(" !hook(many_balanced) ")"
+    | @auto "_Generic" "(" many_balanced ")"
     | @guard(is_ident_not_known_enum) $become_as identifier
     | $become constant
 postfix_expression_atom ::=
@@ -307,7 +308,7 @@ postfix_expression_builtin_guard ::=
     @peek(1, "(") ext_builtin
     | postfix_expression_atom $become postfix_trailer_star
 ext_builtin ::= # builtins can take non-expressions as arguments. bypass argument parsing.
-    R`__builtin_[a-zA-Z_0-9]*`r "(" !hook(many_balanced) ")" $become postfix_trailer_star
+    R`__builtin_[a-zA-Z_0-9]*`r "(" many_balanced ")" $become postfix_trailer_star
 
 postfix_trailer_star ::=
     @peekr(0, r`\[|\(|\.|->|\+\+|--`r) postfix_trailer $become postfix_trailer_star
@@ -472,7 +473,7 @@ compound_statement ::=
     @peekr(0, r`__attribute__|__attribute`r) attribute_list $become compound_statement
     | "{" $become compound_statement_trail
 attribute ::=
-    $pruned r`__attribute__|__attribute`r "(" "(" !hook(many_balanced) ")" ")"
+    $pruned r`__attribute__|__attribute`r "(" "(" many_balanced ")" ")"
 compound_statement_trail ::=
     @auto "}"
     | block_item_list "}"
@@ -577,7 +578,7 @@ func_knr_declaration_star ::=
     | declaration $become func_knr_declaration_star
 
 static_assert ::=
-    R`(?:_S|s)tatic_assert`r "(" assignment_expression !hook(many_balanced) ")" ";"
+    R`(?:_S|s)tatic_assert`r "(" assignment_expression many_balanced ")" ";"
 
 
 init_declarator_list ::=
@@ -628,3 +629,13 @@ _token_dummy ::=
           (?:(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*)|\
           (?:(?:  0[xX][a-fA-F0-9]+  |  [1-9][0-9]*  |  0[0-7]*  )       (?:[uU](?:ll|LL|l|L)?|(?:ll|LL|l|L)[uU]?)?)|\
           (?:(?:\*|/|%|\+|-|<<|>>|&|\^|\|)=|<<|>>|<=|>=|==|!=|&&|\|\||[&*/\+\-~!%<>=\^\|])`r
+
+
+many_balanced ::=
+    @peek(0, ")") #empty
+    | @peek(0, "]") #empty
+    | @peek(0, "}") #empty
+    | @auto "(" many_balanced ")" $become many_balanced
+    | @auto "[" many_balanced "]" $become many_balanced
+    | @auto "{" many_balanced "}" $become many_balanced
+    | $any $become many_balanced
