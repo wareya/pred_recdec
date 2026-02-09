@@ -728,17 +728,18 @@ pub struct TokError {
     #[allow(unused)] pub produced : usize,
     /// At what byte index in the input string did tokenization fail to continue?
     #[allow(unused)] pub location : usize,
-    /// Pairing error: if tokenization failed because of failing to pair brackets:
+    /// Is `Some` if tokenization failed because of failing to pair brackets:
     ///
-    /// responsible token text, openness
+    /// - `String`: responsible token text
+    /// - `bool`: openness
     ///
-    /// If the bool is true, then the failed pairing is "open", like the string `(`. Otherwise, it's "closed", like `())`.
+    /// If the bool is true, then the failed pairing is "open", like the string `()(`. Otherwise, it's "closed", like `())`.
     ///
-    /// The resonsible token is the token responsible for noticing the error, not the token that's "missing". E.g. for `())` it's `")"`.
+    /// The responsible token is the token where the error was noticed, not the token that's "missing". E.g. for `())` it's `")"`.
     ///
-    /// It is currently unspecified whether non-nested overlaps like `( { ) }` trigger an error. Presently, they don't.
+    /// It is currently unspecified whether non-nested overlaps like `( { ) }` trigger an error.
     ///
-    /// KNOWN BUG: "open" failed pairings like `(` do not currently produce errors. They will become errors in a future version.
+    /// KNOWN BUG: "open" failed pairings like `()(` do not currently produce errors. They will become errors in a future version.
     #[allow(unused)] pub pairing_error : Option<(String, bool)>,
 }
 

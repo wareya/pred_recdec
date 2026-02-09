@@ -260,7 +260,13 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                             }
                         }
                     }
-                    //let child = child.map_err(|e| format!("In {}: {e}", g_item.name))?;
+                    const FAT_ERRS : bool = true;
+                    if FAT_ERRS
+                    {
+                        child = child.map_err(|e| {
+                            let mut e2 = e.clone(); e2.err_message = format!("In {}: {}", g_item.name, e2.err_message); e2
+                        });
+                    }
                     let child = child?;
                     if child.is_poisoned()
                     {

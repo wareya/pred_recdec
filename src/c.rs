@@ -10,7 +10,7 @@ mod tests
     {
         let args: Vec<String> = std::env::args().collect();
 
-        println!("usage: cargo test test_c --release -- src/<filename>.c --show-output");
+        println!("usage: cargo test test_c --release -- <filename>.c --show-output");
         if args.len() < 3
         {
             return;
@@ -18,7 +18,7 @@ mod tests
         let input_fname = args[2].to_string();
         
         let start = std::time::Instant::now();
-        let grammar_source = std::fs::read_to_string("src/grammar.txt").unwrap();
+        let grammar_source = std::fs::read_to_string("src/grammar_c.txt").unwrap();
         let mut g = bnf_to_grammar(&grammar_source).unwrap();
         
         let mut precedence_list = vec!(
@@ -88,7 +88,7 @@ mod tests
                 //let n = &global.g.string_cache_inv[*nj as usize];
                 let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(new_regex(
                     r#"(?x)\A(?:typeof|__typeof__|void|__extension__
-                    |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|const|volatile|__volatile__
+                    |__builtin_va_list|char|short|int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|_Float16|__bf16|__int128|const|volatile|__volatile__
                     |enum|struct|union)\z"#
                 ).unwrap()));
                 if r.is_match_interned(*nj, &global.g.string_cache_inv)
@@ -136,7 +136,7 @@ mod tests
                         |__builtin_va_list|static|auto|register|const|restrict
                         |__cdecl|__stdcall
                         |__restrict__|volatile|__volatile__|__inline__|__inline|inline|void|char|short
-                        |int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|enum|struct|union)\z"#
+                        |int|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary|_Float16|__bf16|__int128|enum|struct|union)\z"#
                     ).unwrap()));
                     if r.is_match_interned(*nj, &global.g.string_cache_inv)
                     {
@@ -361,7 +361,7 @@ mod tests
                 {
                     let n = &global.g.string_cache_inv[c.text as usize];
                     if c.children.is_none() && &**n == "typedef" { is_typedef = true; }
-                    if c.children.is_some() && matches!(&***n, "typedef_name" | "parameter_type_list" | "struct_or_union_specifier") { return false; }
+                    if c.children.is_some() && matches!(&***n, "typedef_name" | "parameter_type_list" | "struct_or_union_specifier" | "enum_specifier") { return false; }
                     true
                 };
                 for c in children.iter_mut()
@@ -392,7 +392,7 @@ mod tests
                         }
                         //println!("logged {} as typedef", global.g.string_cache_inv[c.children.as_ref().unwrap()[0].text as usize]);
                     }
-                    if c.children.is_some() && matches!(&***n, "typedef_name" | "parameter_type_list" | "struct_or_union_specifier") { return false; }
+                    if c.children.is_some() && matches!(&***n, "typedef_name" | "parameter_type_list" | "struct_or_union_specifier" | "enum_specifier") { return false; }
                     true
                 };
                 for c in children.iter_mut()
