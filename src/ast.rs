@@ -384,7 +384,7 @@ fn make_workstate<'a>(
     };
     ws
 }
-    
+
 #[inline(never)]
 pub (crate) fn pred_recdec_parse_impl_recursive(
     global : &mut PrdGlobal,
@@ -525,8 +525,6 @@ pub (crate) fn pred_recdec_parse_impl_lifo(
     stack.reserve(1024);
     let mut ready_child : Option<(Result<_, _>, u32)> = None;
     let mut ws = make_workstate(&global.g.points[gp_id], _token_start);
-    
-    println!("workstate size: {}", std::mem::size_of::<WorkState>());
     
     #[cfg(feature = "parse_trace")]
     { println!("entered {} at {}", global.g.string_cache_inv[ws.g_item.name_id as usize], ws.i); }
@@ -761,7 +759,7 @@ pub type Hook = Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) ->
 
 #[allow(unused)]
 /// *Recursive implementation:* Parse the given token stream (produced by [`bnf::tokenize`](`super::bnf::tokenize`)) into an AST, using the given [`bnf::Grammar`](`super::bnf::Grammar`), and taking the given root rule name as the starting point.
-///
+/// 
 /// Guards and hooks are for advanced usage (e.g. parsing C).
 /// 
 /// This implementation is vulnerable to deep recursion issues. Depending on compiler settings, the recursion depth limit may vary from 300 to 3000, with very little control. For this reason, there's a hard depth limit of about 1500 in release mode and 300 in debug mode.
