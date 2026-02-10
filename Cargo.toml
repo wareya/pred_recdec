@@ -1,6 +1,6 @@
 [package]
 name = "pred-recdec"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 authors = ["<wareya@gmail.com>"]
 license = "MIT OR Apache-2.0 OR CC0-1.0 OR 0BSD"
@@ -19,16 +19,19 @@ path = "src/lib.rs"
 name = "pred_recdec"
 path = "src/main.rs"
 test = false
+required-features = ["build_binaries"]
 
 [[bin]]
 name = "c_parser_test"
 path = "src/c.rs"
 test = false
+required-features = ["build_binaries"]
 
 [dependencies]
-mimalloc = "0.1.48"
 regex = "=1.8" # much faster than any other version series
 rustc-hash = "2.1.1"
+mimalloc = { version = "0.1.48", optional = true }
+
 
 [lints.clippy]
 all = "allow"
@@ -44,6 +47,7 @@ debug = true
 
 [features]
 parse_trace = []
+build_binaries = ["mimalloc"]
 
 [dev-dependencies]
 serde_json = "1.0.149"

@@ -115,13 +115,18 @@ pub struct PrdError {
     #[allow(unused)] pub on_behalf_of_rule : u32,
 }
 
+#[inline(never)]
 pub (crate) fn pred_recdec_parse_impl_recursive(
     global : &mut PrdGlobal,
     gp_id : usize, tokens : &[Token], token_start : usize,
     depth : usize
-) -> Result<ASTNode, PrdError>
+) -> Result<ASTNode, Box<PrdError>>
 {
-    const DEPTH_LIMIT : usize = if cfg!(debug_assertions) { 300 } else { 1200 };
+    // BE WARNED: There are a bunch of very strange patterns in this function that look like they have no purpose,
+    //   but exist to trick LLVM into spilling less data onto the stack.
+    // In the future, I'll write a non-recursive implementation, but it'll likely be a bit slower.
+    const DEPTH_LIMIT : usize = if cfg!(debug_assertions) { 300 } else { 1500 };
+    
     let mut g_item = &global.g.points[gp_id];
     let mut chosen_name_id = g_item.name_id;
     
@@ -131,14 +136,19 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
     let mut poisoned = false;
     let mut alt_id : usize = 0;
     
-    macro_rules! build_err { ($x:expr, $prog:expr) => {
-        Err(PrdError {
-            err_message : $x, token_index : i, rule : g_item.name_id, on_behalf_of_rule : chosen_name_id,
-            in_alt : alt_id.wrapping_sub(1) as u16, alt_progress : $prog
+    #[inline(never)]
+    fn error_builder(msg : String, i : usize, id : u32, behalf : u32, in_alt : u16, prog : Option<u16>) -> Box<PrdError>
+    {
+        Box::new(PrdError {
+            err_message : msg, token_index : i, rule : id, on_behalf_of_rule : behalf,
+            in_alt : in_alt, alt_progress : prog
         })
-    } }
+    }
+    macro_rules! build_err { ($prog:expr, $($tts:tt)*) => { {
+        (|| { Err(error_builder(format!($($tts)*), i, g_item.name_id, chosen_name_id, alt_id.wrapping_sub(1) as u16, $prog)) })()
+    } } }
     
-    if depth > DEPTH_LIMIT { return build_err!(format!("Exceeded recursion depth limit of {DEPTH_LIMIT}."), None); }
+    if depth > DEPTH_LIMIT { return build_err!(None, "Exceeded recursion depth limit of {DEPTH_LIMIT}."); }
     
     #[cfg(feature = "parse_trace")] { println!("entered {} at {i}, depth {depth}", global.g.string_cache_inv[chosen_name_id as usize]); }
     
@@ -158,9 +168,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
         let mut term_idx = 0;
         
         let mut accepted = true;
-        let first_term = alt.matching_terms.get(0);
-        let first_term = first_term.as_ref().unwrap();
-        match &first_term.t
+        match &alt.matching_terms.get(0).as_ref().unwrap().t
         {
             MatchingTermE::Guard(guard) =>
             {
@@ -171,13 +179,13 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                     match f(global, tokens, i)
                     {
                         GuardResult::Accept => accepted = true,
-                        GuardResult::HardError(e) => build_err!(e, None)?,
+                        GuardResult::HardError(e) => build_err!(None, "{}", e)?,
                         _ => {}
                     }
                 }
                 else
                 {
-                    return build_err!(format!("Unknown guard {guard}"), None);
+                    return build_err!(None, "Unknown guard {guard}");
                 }
                 term_idx += 1;
             }
@@ -243,7 +251,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                 MatchingTermE::Rule(id) =>
                 {
                     let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, i, depth + 1);
-                    child = std::hint::black_box(child);
+                    //child = std::hint::black_box(child);
                     if child.is_err() && global.g.points[*id].recover.is_some()
                     {
                         if let Some((r, after)) = &global.g.points[*id].recover
@@ -263,9 +271,12 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                     const FAT_ERRS : bool = false;
                     if FAT_ERRS
                     {
-                        child = child.map_err(|e| {
-                            let mut e2 = e.clone(); e2.err_message = format!("In {}: {}", g_item.name, e2.err_message); e2
-                        });
+                        if let Err(e) = child
+                        {
+                            let mut e2 = e.clone();
+                            e2.err_message = format!("In {}: {}", g_item.name, e2.err_message);
+                            child = Err(e2);
+                        }
                     }
                     let child = child?;
                     if child.is_poisoned()
@@ -284,7 +295,6 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                         {
                             children.push(ASTNode::new(None, 1, tokens[i].text));
                         }
-                        //println!("munched {lit} at {i}");
                         i += 1;
                         matched = true;
                     }
@@ -295,7 +305,6 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                     {
                         children.push(ASTNode::new(None, 1, tokens[i].text));
                     }
-                    //println!("munched {} at {i}", tokens[i].text);
                     i += 1;
                     matched = true;
                 }
@@ -305,7 +314,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                     {
                         MatchDirective::Become | MatchDirective::BecomeAs =>
                         {
-                            if let Some(MatchingTermE::Rule(id)) = alt.matching_terms.get(term_idx + 1).map(|x| &x.t)
+                            if let Some(qx) = alt.matching_terms.get(term_idx + 1) && let MatchingTermE::Rule(id) = &qx.t
                             {
                                 g_item = &global.g.points[*id];
                                 #[cfg(feature = "parse_trace")] { println!("became {} at {i}, depth {depth}", g_item.name); }
@@ -317,11 +326,14 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                                 continue 'top;
                             }
                         }
-                        MatchDirective::Rename => if let Some(MatchingTermE::Rule(id)) = alt.matching_terms.get(term_idx + 1).map(|x| &x.t)
+                        MatchDirective::Rename =>
                         {
-                            chosen_name_id = *id as u32;
-                            term_idx += 1;
-                            matched = true;
+                            if let Some(qx) = alt.matching_terms.get(term_idx + 1) && let MatchingTermE::Rule(id) = &qx.t
+                            {
+                                chosen_name_id = *id as u32;
+                                term_idx += 1;
+                                matched = true;
+                            }
                         }
                         MatchDirective::Drop => if children.len() > 0
                         {
@@ -330,7 +342,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                         }
                         MatchDirective::DropIfEmpty => if children.len() > 0
                         {
-                            if matches!(children.last().unwrap().children, Some(_))
+                            if children.last().unwrap().children.is_some()
                             {
                                 children.pop();
                             }
@@ -370,37 +382,46 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                         match f(global, tokens, i, &mut children)
                         {
                             Ok(consumed) => { i += consumed; }
-                            Err(e) => build_err!(e, Some(term_idx as u16))?
+                            Err(e) => build_err!(Some(term_idx as u16), "{}", e)?
                         }
                     }
                     else
                     {
                         build_err!(
-                            format!("Unknown custom hook {:?} inside of {}",
-                                name, global.g.string_cache_inv[chosen_name_id as usize]
-                            ),
-                            Some(term_idx as u16)
+                            Some(term_idx as u16),
+                            "Unknown custom hook {:?} inside of {}",
+                            name, 
+                            global.g.string_cache_inv[chosen_name_id as usize],
                         )?
                     }
                     matched = true;
                 }
                 _ => build_err!(
-                        format!("Term type {:?} not supported in this position in a rule (context: {})",
-                            term, global.g.string_cache_inv[chosen_name_id as usize]
-                        ),
-                        Some(term_idx as u16)
+                        Some(term_idx as u16),
+                        "Term type {:?} not supported in this position in a rule (context: {})",
+                        term, global.g.string_cache_inv[chosen_name_id as usize]
                     )?
             }
             if !matched
             {
+                #[inline(never)]
+                fn token_name(cache : &Vec<Rc<String>>, t : Option<&Token>) -> String
+                {
+                    if let Some(t) = t
+                    {
+                        (*cache[t.text as usize]).clone()
+                    }
+                    else
+                    {
+                        "<no token>".to_string()
+                    }
+                }
+                let token_text = token_name(&global.g.string_cache_inv, tokens.get(i));
                 build_err!(
-                    format!("Failed to match token at {i} in rule {} alt {alt_id}. Token is `{:?}`.\n{:?}",
-                        global.g.string_cache_inv[chosen_name_id as usize],
-                        tokens.get(i).map(|x| global.g.string_cache_inv[x.text as usize].clone()),
-                        tokens[token_start..tokens.len().min(token_start+15)].iter()
-                            .map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()
-                    ),
-                    Some(term_idx as u16)
+                    Some(term_idx as u16),
+                    "Failed to match token at {i} in rule {} alt {alt_id}. Token is `{}`.",
+                    global.g.string_cache_inv[chosen_name_id as usize],
+                    token_text,
                 )?
             }
             term_idx += 1;
@@ -416,10 +437,9 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
     }
     
     build_err!(
-        format!("Failed to match rule {} at token position {token_start}\n{:?}", global.g.string_cache_inv[chosen_name_id as usize],
-            tokens[token_start..tokens.len().min(token_start+15)].iter().map(|x| global.g.string_cache_inv[x.text as usize].clone()).collect::<Vec<_>>()
-        ),
-        Some(g_item.forms.len() as u16)
+        Some(g_item.forms.len() as u16),
+        "Failed to match rule {} at token position {token_start}",
+        global.g.string_cache_inv[chosen_name_id as usize],
     )
 }
 
@@ -461,7 +481,7 @@ pub fn parse(
     g : &Grammar, root_rule_name : &str, tokens : &[Token],
     guards : Rc<HashMap<String, Guard>>,
     hooks : Rc<HashMap<String, Hook>>,
-) -> Result<ASTNode, PrdError>
+) -> Result<ASTNode, Box<PrdError>>
 {
     let gp_id = g.by_name.get(root_rule_name).unwrap();
     let mut global = PrdGlobal {

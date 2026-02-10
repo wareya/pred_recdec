@@ -86,6 +86,7 @@ impl RegexCacher {
         RegexCacher { r, cache, cache2 }
     }
     /// Does the regex match the string?
+    #[inline(never)]
     pub fn is_match(&self, s : &Rc<String>) -> bool
     {
         let mut cache = self.cache.borrow_mut();
@@ -96,6 +97,7 @@ impl RegexCacher {
         ret
     }
     /// Does the regex match the string based on its interned ID? See also: [`Grammar::string_cache_inv`]
+    #[inline(never)]
     pub fn is_match_interned(&self, i : u32, string_cache_inv : &Vec<Rc<String>>) -> bool
     {
         let mut cache = self.cache2.borrow_mut();

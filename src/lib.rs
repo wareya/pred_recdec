@@ -5,9 +5,11 @@
 //! It is **VERY HIGHLY RECOMMENDED** that you use the mimalloc crate (or some other high-performance memory allocator) if you use this library:
 //!
 //! ```
+//! # {} /*
 //! use mimalloc::MiMalloc;
 //! #[global_allocator]
 //! static GLOBAL: MiMalloc = MiMalloc;
+//! # */
 //! ```
 //!
 //! You want:
