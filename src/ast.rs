@@ -115,6 +115,16 @@ pub struct PrdError {
     #[allow(unused)] pub on_behalf_of_rule : u32,
 }
 
+struct WorkState<'a> { 
+    pub g_item : &'a GrammarPoint,
+    pub chosen_name_id : u32,
+    pub children : Vec<ASTNode>,
+    pub i : usize,
+    pub poisoned : bool,
+    pub alt_id : usize,
+    pub term_idx : usize,
+}
+
 #[inline(never)]
 pub (crate) fn pred_recdec_parse_impl_recursive(
     global : &mut PrdGlobal,
@@ -127,14 +137,14 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
     // In the future, I'll write a non-recursive implementation, but it'll likely be a bit slower.
     const DEPTH_LIMIT : usize = if cfg!(debug_assertions) { 300 } else { 1500 };
     
-    let mut g_item = &global.g.points[gp_id];
-    let mut chosen_name_id = g_item.name_id;
-    
-    let mut children = vec!();
-    let mut i = token_start;
-    
-    let mut poisoned = false;
-    let mut alt_id : usize = 0;
+    let mut ws = {
+        let g_item = &global.g.points[gp_id];
+        let ws = WorkState {
+            g_item, chosen_name_id : g_item.name_id, children : vec!(),
+            i : token_start, poisoned : false, alt_id : 0, term_idx : 0
+        };
+        ws
+    };
     
     #[inline(never)]
     fn error_builder(msg : String, i : usize, id : u32, behalf : u32, in_alt : u16, prog : Option<u16>) -> Box<PrdError>
@@ -145,7 +155,7 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
         })
     }
     macro_rules! build_err { ($prog:expr, $($tts:tt)*) => { {
-        (|| { Err(error_builder(format!($($tts)*), i, g_item.name_id, chosen_name_id, alt_id.wrapping_sub(1) as u16, $prog)) })()
+        (|| { Err(error_builder(format!($($tts)*), ws.i, ws.g_item.name_id, ws.chosen_name_id, ws.alt_id.wrapping_sub(1) as u16, $prog)) })()
     } } }
     
     if depth > DEPTH_LIMIT { return build_err!(None, "Exceeded recursion depth limit of {DEPTH_LIMIT}."); }
@@ -155,108 +165,105 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
     // Structured this way for the sake of $become
     // 1) We can't use an iterator because then we can't go back to alternation 0.
     // 2) We can't have a "find alt" loop followed by a non-loop process block because then we can't go back to the "find alt" loop during $BECOME.
-    'top: while alt_id < g_item.forms.len()
+    'top: while ws.alt_id < ws.g_item.forms.len()
     {
-        let alt = &g_item.forms[alt_id];
-        alt_id += 1;
+        let alt = &ws.g_item.forms[ws.alt_id];
+        ws.alt_id += 1;
+        ws.term_idx = 0;
         
         if alt.matching_terms.len() == 0
         {
-            return Ok(ASTNode::new(Some(children), (i - token_start) as u32, chosen_name_id));
+            return Ok(ASTNode::new(Some(ws.children), (ws.i - token_start) as u32, ws.chosen_name_id));
         }
-        
-        let mut term_idx = 0;
-        
-        let mut accepted = true;
-        match &alt.matching_terms.get(0).as_ref().unwrap().t
+        else
         {
-            MatchingTermE::Guard(guard) =>
+            let mut accepted = true;
+            match &alt.matching_terms.get(0).as_ref().unwrap().t
             {
-                accepted = false;
-                if let Some(f) = global.guards.get(&**guard)
+                MatchingTermE::Guard(guard) =>
                 {
-                    let f = Rc::clone(&f);
-                    match f(global, tokens, i)
+                    accepted = false;
+                    if let Some(f) = global.guards.get(&**guard)
                     {
-                        GuardResult::Accept => accepted = true,
-                        GuardResult::HardError(e) => build_err!(None, "{}", e)?,
-                        _ => {}
+                        let f = Rc::clone(&f);
+                        match f(global, tokens, ws.i)
+                        {
+                            GuardResult::Accept => accepted = true,
+                            GuardResult::HardError(e) => build_err!(None, "{}", e)?,
+                            _ => {}
+                        }
                     }
-                }
-                else
-                {
-                    return build_err!(None, "Unknown guard {guard}");
-                }
-                term_idx += 1;
-            }
-            MatchingTermE::Peek(loc, tester) =>
-            {
-                accepted = false;
-                let loc = (i as isize + loc) as usize;
-                if loc < tokens.len() && tokens[loc].text == *tester
-                {
-                    accepted = true;
-                }
-                term_idx += 1;
-            }
-            MatchingTermE::PeekR(loc, tester) =>
-            {
-                accepted = false;
-                let loc = (i as isize + loc) as usize;
-                //if loc < tokens.len() && tester.is_match(&global.g.string_cache_inv[tokens[loc].text as usize])
-                if loc < tokens.len() && tester.is_match_interned(tokens[loc].text, &global.g.string_cache_inv)
-                {
-                    accepted = true;
-                }
-                term_idx += 1;
-            }
-            MatchingTermE::PeekRes(loc, tester) =>
-            {
-                accepted = false;
-                let loc = (i as isize + loc) as usize;
-                //if loc < tokens.len() && tester.is_match(&global.g.string_cache_inv[tokens[loc].text as usize])
-                if loc < tokens.len() && tester.is_match_interned(tokens[loc].text, &global.g.string_cache_inv)
-                {
-                    accepted = true;
-                    if let Some(r) = &global.g.reserved
+                    else
                     {
-                        if regex_is_match(r, &global.g.string_cache_inv[tokens[loc].text as usize]) { accepted = false; }
+                        return build_err!(None, "Unknown guard {guard}");
                     }
+                    ws.term_idx += 1;
                 }
-                term_idx += 1;
+                MatchingTermE::Peek(loc, tester) =>
+                {
+                    accepted = false;
+                    let loc = (ws.i as isize + loc) as usize;
+                    if loc < tokens.len() && tokens[loc].text == *tester
+                    {
+                        accepted = true;
+                    }
+                    ws.term_idx += 1;
+                }
+                MatchingTermE::PeekR(loc, tester) =>
+                {
+                    accepted = false;
+                    let loc = (ws.i as isize + loc) as usize;
+                    if loc < tokens.len() && tester.is_match_interned(tokens[loc].text, &global.g.string_cache_inv)
+                    {
+                        accepted = true;
+                    }
+                    ws.term_idx += 1;
+                }
+                MatchingTermE::PeekRes(loc, tester) =>
+                {
+                    accepted = false;
+                    let loc = (ws.i as isize + loc) as usize;
+                    if loc < tokens.len() && tester.is_match_interned(tokens[loc].text, &global.g.string_cache_inv)
+                    {
+                        accepted = true;
+                        if let Some(r) = &global.g.reserved
+                        {
+                            if regex_is_match(r, &global.g.string_cache_inv[tokens[loc].text as usize]) { accepted = false; }
+                        }
+                    }
+                    ws.term_idx += 1;
+                }
+                MatchingTermE::Eof =>
+                {
+                    accepted = ws.i == tokens.len();
+                    ws.term_idx += 1;
+                }
+                _ => {}
             }
-            MatchingTermE::Eof =>
-            {
-                accepted = i == tokens.len();
-                term_idx += 1;
-            }
-            _ => {}
+            if !accepted { continue; }
         }
-        
-        if !accepted { continue; }
         
         #[cfg(feature = "parse_trace")] { println!("chose variant {}", alt_id-1); }
         
-        if children.capacity() == 0
+        if ws.children.capacity() == 0
         {
-            children.reserve_exact(alt.matching_terms.len());
+            ws.children.reserve_exact(alt.matching_terms.len());
         }
         
-        while term_idx < alt.matching_terms.len()
+        while ws.term_idx < alt.matching_terms.len()
         {
-            let term = &alt.matching_terms[term_idx];
+            let term = &alt.matching_terms[ws.term_idx];
             let mut matched = false;
             match &term.t
             {
                 MatchingTermE::Rule(id) =>
                 {
-                    let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, i, depth + 1);
-                    //child = std::hint::black_box(child);
+                    let mut child = pred_recdec_parse_impl_recursive(global, *id, tokens, ws.i, depth + 1);
                     if child.is_err() && global.g.points[*id].recover.is_some()
                     {
                         if let Some((r, after)) = &global.g.points[*id].recover
                         {
-                            let mut j = i + 1;
+                            let mut j = ws.i + 1;
                             while j < tokens.len() && !r.is_match(&global.g.string_cache_inv[tokens[j].text as usize])
                             {
                                 j += 1;
@@ -264,48 +271,47 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                             if j < tokens.len()
                             {
                                 if *after { j += 1; }
-                                child = Ok(ASTNode::new(Some(vec!()), (j - i) as u32 ^ !0u32, global.g.points[*id].name_id));
+                                child = Ok(ASTNode::new(Some(vec!()), (j - ws.i) as u32 ^ !0u32, global.g.points[*id].name_id));
                             }
                         }
                     }
-                    const FAT_ERRS : bool = false;
-                    if FAT_ERRS
+                    #[cfg(feature = "deep_errors")]
                     {
                         if let Err(e) = child
                         {
                             let mut e2 = e.clone();
-                            e2.err_message = format!("In {}: {}", g_item.name, e2.err_message);
+                            e2.err_message = format!("In {}: {}", ws.g_item.name, e2.err_message);
                             child = Err(e2);
                         }
                     }
                     let child = child?;
                     if child.is_poisoned()
                     {
-                        poisoned = true;
+                        ws.poisoned = true;
                     }
-                    i += child.get_real_token_count() as usize;
-                    children.push(child);
+                    ws.i += child.get_real_token_count() as usize;
+                    ws.children.push(child);
                     matched = true;
                 }
                 MatchingTermE::TermLit(lit) =>
                 {
-                    if i < tokens.len() && tokens[i].text == *lit
+                    if ws.i < tokens.len() && tokens[ws.i].text == *lit
                     {
                         if !alt.pruned
                         {
-                            children.push(ASTNode::new(None, 1, tokens[i].text));
+                            ws.children.push(ASTNode::new(None, 1, tokens[ws.i].text));
                         }
-                        i += 1;
+                        ws.i += 1;
                         matched = true;
                     }
                 }
-                MatchingTermE::TermRegex(regex) => if i < tokens.len() && regex.is_match_interned(tokens[i].text, &global.g.string_cache_inv)
+                MatchingTermE::TermRegex(regex) => if ws.i < tokens.len() && regex.is_match_interned(tokens[ws.i].text, &global.g.string_cache_inv)
                 {
                     if !alt.pruned
                     {
-                        children.push(ASTNode::new(None, 1, tokens[i].text));
+                        ws.children.push(ASTNode::new(None, 1, tokens[ws.i].text));
                     }
-                    i += 1;
+                    ws.i += 1;
                     matched = true;
                 }
                 MatchingTermE::Directive(d) =>
@@ -314,63 +320,63 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                     {
                         MatchDirective::Become | MatchDirective::BecomeAs =>
                         {
-                            if let Some(qx) = alt.matching_terms.get(term_idx + 1) && let MatchingTermE::Rule(id) = &qx.t
+                            if let Some(qx) = alt.matching_terms.get(ws.term_idx + 1) && let MatchingTermE::Rule(id) = &qx.t
                             {
-                                g_item = &global.g.points[*id];
+                                ws.g_item = &global.g.points[*id];
                                 #[cfg(feature = "parse_trace")] { println!("became {} at {i}, depth {depth}", g_item.name); }
-                                alt_id = 0;
+                                ws.alt_id = 0;
                                 if matches!(d, MatchDirective::BecomeAs)
                                 {
-                                    chosen_name_id = g_item.name_id;
+                                    ws.chosen_name_id = ws.g_item.name_id;
                                 }
                                 continue 'top;
                             }
                         }
                         MatchDirective::Rename =>
                         {
-                            if let Some(qx) = alt.matching_terms.get(term_idx + 1) && let MatchingTermE::Rule(id) = &qx.t
+                            if let Some(qx) = alt.matching_terms.get(ws.term_idx + 1) && let MatchingTermE::Rule(id) = &qx.t
                             {
-                                chosen_name_id = *id as u32;
-                                term_idx += 1;
+                                ws.chosen_name_id = *id as u32;
+                                ws.term_idx += 1;
                                 matched = true;
                             }
                         }
-                        MatchDirective::Drop => if children.len() > 0
+                        MatchDirective::Drop => if ws.children.len() > 0
                         {
-                            children.pop();
+                            ws.children.pop();
                             matched = true;
                         }
-                        MatchDirective::DropIfEmpty => if children.len() > 0
+                        MatchDirective::DropIfEmpty => if ws.children.len() > 0
                         {
-                            if children.last().unwrap().children.is_some()
+                            if ws.children.last().unwrap().children.is_some()
                             {
-                                children.pop();
+                                ws.children.pop();
                             }
                             matched = true;
                         }
-                        MatchDirective::Hoist => if children.len() > 0
+                        MatchDirective::Hoist => if ws.children.len() > 0
                         {
-                            let x = children.pop().unwrap();
+                            let x = ws.children.pop().unwrap();
                             if let Some(mut c) = x.children
                             {
-                                children.append(&mut c);
+                                ws.children.append(&mut c);
                             }
                             matched = true;
                         }
-                        MatchDirective::HoistIfUnit => if children.len() > 0
+                        MatchDirective::HoistIfUnit => if ws.children.len() > 0
                         {
-                            let x = children.pop().unwrap();
+                            let x = ws.children.pop().unwrap();
                             if let Some(mut c) = x.children && c.len() == 1
                             {
-                                children.append(&mut c);
+                                ws.children.append(&mut c);
                             }
                             matched = true;
                         }
-                        MatchDirective::Any => if i < tokens.len()
+                        MatchDirective::Any => if ws.i < tokens.len()
                         {
-                            children.push(ASTNode::new(None, 1, tokens[i].text));
+                            ws.children.push(ASTNode::new(None, 1, tokens[ws.i].text));
                             matched = true;
-                            i += 1;
+                            ws.i += 1;
                         }
                     }
                 }
@@ -379,27 +385,27 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                     if let Some(f) = global.hooks.get(&**name)
                     {
                         let f = Rc::clone(&f);
-                        match f(global, tokens, i, &mut children)
+                        match f(global, tokens, ws.i, &mut ws.children)
                         {
-                            Ok(consumed) => { i += consumed; }
-                            Err(e) => build_err!(Some(term_idx as u16), "{}", e)?
+                            Ok(consumed) => { ws.i += consumed; }
+                            Err(e) => build_err!(Some(ws.term_idx as u16), "{}", e)?
                         }
                     }
                     else
                     {
                         build_err!(
-                            Some(term_idx as u16),
+                            Some(ws.term_idx as u16),
                             "Unknown custom hook {:?} inside of {}",
                             name, 
-                            global.g.string_cache_inv[chosen_name_id as usize],
+                            global.g.string_cache_inv[ws.chosen_name_id as usize],
                         )?
                     }
                     matched = true;
                 }
                 _ => build_err!(
-                        Some(term_idx as u16),
+                        Some(ws.term_idx as u16),
                         "Term type {:?} not supported in this position in a rule (context: {})",
-                        term, global.g.string_cache_inv[chosen_name_id as usize]
+                        term, global.g.string_cache_inv[ws.chosen_name_id as usize]
                     )?
             }
             if !matched
@@ -416,30 +422,32 @@ pub (crate) fn pred_recdec_parse_impl_recursive(
                         "<no token>".to_string()
                     }
                 }
-                let token_text = token_name(&global.g.string_cache_inv, tokens.get(i));
+                let token_text = token_name(&global.g.string_cache_inv, tokens.get(ws.i));
                 build_err!(
-                    Some(term_idx as u16),
-                    "Failed to match token at {i} in rule {} alt {alt_id}. Token is `{}`.",
-                    global.g.string_cache_inv[chosen_name_id as usize],
+                    Some(ws.term_idx as u16),
+                    "Failed to match token at {} in rule {} alt {}. Token is `{}`.",
+                    ws.i,
+                    global.g.string_cache_inv[ws.chosen_name_id as usize],
+                    ws.alt_id,
                     token_text,
                 )?
             }
-            term_idx += 1;
+            ws.term_idx += 1;
         }
         
         #[cfg(feature = "parse_trace")] { println!("accepted {} from {token_start} to {i}, depth {depth}", global.g.string_cache_inv[chosen_name_id as usize]); }
-        let mut token_count = (i - token_start) as u32;
-        if poisoned
+        let mut token_count = (ws.i - token_start) as u32;
+        if ws.poisoned
         {
             token_count = token_count ^ !0u32;
         }
-        return Ok(ASTNode::new(Some(children), token_count, chosen_name_id));
+        return Ok(ASTNode::new(Some(ws.children), token_count, ws.chosen_name_id));
     }
     
     build_err!(
-        Some(g_item.forms.len() as u16),
+        Some(ws.g_item.forms.len() as u16),
         "Failed to match rule {} at token position {token_start}",
-        global.g.string_cache_inv[chosen_name_id as usize],
+        global.g.string_cache_inv[ws.chosen_name_id as usize],
     )
 }
 

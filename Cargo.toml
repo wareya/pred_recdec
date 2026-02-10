@@ -47,6 +47,7 @@ debug = true
 
 [features]
 parse_trace = []
+deep_errors = []
 build_binaries = ["mimalloc"]
 
 [dev-dependencies]
