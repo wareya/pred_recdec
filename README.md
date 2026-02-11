@@ -16,11 +16,11 @@ Rationale:
 
 This interprets the grammar over the input text, so you don't need a code generation/compilation step. This works well but has a performance impact; the resulting parsing system is about 50~400% slower than native code. For most applications, that's perfectly OK. If this idea picks up I might work on code generation as its own thing.
 
-I wrote a working C99 grammar (src/grammar.txt). It successfully parses the preprocessor output of both gcc and clang `#include`-ing a kitchen sink worth of stdlib headers. It also passes all of the pure-standard-C99 parser tests used by Clang (after preprocessing).
+I wrote a working C99 grammar (src/grammar_c.txt). It successfully parses the preprocessor output of both gcc and clang `#include`-ing a kitchen sink worth of stdlib headers. It also passes all of the pure-standard-C99 parser tests used by Clang (after preprocessing).
 
 This is *not* a PEG or packrat thing. It's more like "handwrite an LL(k) parser". This mirrors how most high-performance parsers are written today, just in a BNF shell.
 
-**Performance**: Faster than Clang and GCC `-fsyntax-only -ftime-report` on a 5.6MB C source file, slower than  `-fsyntax-only` (no time report instrumentation), tested with the included grammar (src/grammar.txt).
+**Performance**: Faster than Clang and GCC `-fsyntax-only -ftime-report` on a 5.6MB C source file, slower than  `-fsyntax-only` (no time report instrumentation), tested with the included grammar (src/grammar_c.txt).
 
 **Features**:
 
