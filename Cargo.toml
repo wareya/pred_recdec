@@ -1,6 +1,6 @@
 [package]
 name = "pred-recdec"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 authors = ["<wareya@gmail.com>"]
 license = "MIT OR Apache-2.0 OR CC0-1.0 OR 0BSD"

@@ -21,7 +21,7 @@ pub struct ASTNode {
     /// Due to error recovery, AST nodes can be marked as "poisoned".
     ///
     /// When a node is poisoned, its token count is XOR'd with !0u32 (all one-bits).
-    pub token_count : u32, // IF POISONED: xor with !0u32 (all one-bits)
+    pub token_count : u32,
     /// Index into grammar.string_cache_inv, giving an `Rc<String>`.
     ///
     /// For parents, it's the name of the associated grammar rule.
@@ -31,33 +31,39 @@ pub struct ASTNode {
 }
 
 impl ASTNode {
+    /// Create an AST node.
     pub fn new(children : Option<Vec<ASTNode>>, token_count : u32, text : u32) -> Self { Self { children, token_count, text } }
+    /// Is this AST node "poisoned", i.e. does it contain something that experienced error recovery?
     pub fn is_poisoned(&self) -> bool { self.token_count >= 0x80000000 }
+    /// The `token_count` field of `ASTNode` is sometimes encoded non-literally.
     pub fn get_real_token_count(&self) -> u32 { if self.token_count >= 0x80000000 { self.token_count ^ !0u32 } else { self.token_count } }
 }
 
 // ASTs can be deeply recursive, so we need to avoid destroying them recursively.
-// Collect all transitive children into self.
-// This is slower than normal dropping (around 2x the runtime) but much safer.
-/*
+// This is slightly slower than normal dropping (around 1.8x the cost) but much safer.
 impl Drop for ASTNode {
     fn drop(&mut self)
     {
-        if let Some(collected) = self.children.as_mut()
+        if let Some(c) = self.children.take()
         {
-            let mut i = 0;
-            while i < collected.len()
+            let mut q = vec!();
+            q.push(c);
+            while let Some(v) = q.pop()
             {
-                if let Some(mut c) = collected[i].children.take()
+                for mut p in v.into_iter().rev()
                 {
-                    collected.append(&mut c);
+                    if let Some(c) = p.children.take()
+                    {
+                        q.push(c);
+                    }
+                    // p is dropped and destructed here.
+                    // it only contains a None, a u32, and a u32, so we can safely "forget" it without leaking memory.
+                    std::mem::forget(p);
                 }
-                i += 1;
             }
         }
     }
 }
-*/
 
 /// Result of a [`Guard`] checking if a given alternation should be taken or not.
 pub enum GuardResult {
@@ -69,26 +75,45 @@ pub enum GuardResult {
     #[allow(unused)] HardError(String)
 }
 
+/// Arguments:
+/// - `&mut PrdGlobal` - context
+/// - `&[Token]` - tokenstream
+/// - `usize` - position in tokenstream.
+pub type Guard = Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>;
+/// Arguments:
+/// - `&mut PrdGlobal` - context
+/// - `&[Token]` - tokenstream
+/// - `usize` - position in tokenstream.
+/// - `&mut Vec<ASTNode>` - current partially-produced AST item.
+///
+/// Return: `Ok(tokens_consumed)` or `Err(human_readable_string)`.
+pub type Hook = Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>;
+
 /// Standard "AnyMap" for putting whatever you want in it.
 #[derive(Default)]
 pub struct AnyMap { map: HashMap<std::any::TypeId, Box<dyn std::any::Any>> }
 
 impl AnyMap {
+    /// Insert an item of type `T` into the `AnyMap`. Overwrites any such existing item.
     #[allow(unused)] pub fn insert<T: 'static>(&mut self, value: T) { self.map.insert(std::any::TypeId::of::<T>(), Box::new(value)); }
+    /// Get an item of type `T` if it exists.
     #[allow(unused)] pub fn get<T: 'static>(&self) -> Option<&T> { self.map.get(&std::any::TypeId::of::<T>())?.downcast_ref::<T>() }
+    /// Get an item of type `T` if it exists (mutable version).
     #[allow(unused)] pub fn get_mut<T: 'static>(&mut self) -> Option<&mut T> { self.map.get_mut(&std::any::TypeId::of::<T>())?.downcast_mut::<T>() }
 }
 
 /// Exposable parts of current parser state.
 pub struct PrdGlobal<'a> {
-    pub (crate) guards : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>>>,
-    pub (crate) hooks : Rc<HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>>,
+    /// The guards you passed into the parse function.
+    pub (crate) guards : Rc<HashMap<String, Guard>>,
+    /// The hooks you passed into the parse function.
+    pub (crate) hooks : Rc<HashMap<String, Hook>>,
     
     /// Put your impure data here.
     #[allow(unused)] pub udata : AnyMap,
     /// Put your impure data here (simple path for cached regexes).
     #[allow(unused)] pub udata_r : HashMap<usize, RegexCacher>,
-    
+    /// Reference to the grammar you passed into the parse function.
     #[allow(unused)] pub g : &'a Grammar,
 }
 
@@ -116,14 +141,14 @@ pub struct PrdError {
 }
 
 struct WorkState<'a> { 
-    pub g_item : &'a GrammarPoint,
-    pub chosen_name_id : u32,
-    pub children : Vec<ASTNode>,
-    pub i : usize,
-    pub token_start : usize,
-    pub poisoned : bool,
-    pub alt_id : usize,
-    pub term_idx : u16,
+    pub (crate) g_item : &'a GrammarPoint,
+    pub (crate) chosen_name_id : u32,
+    pub (crate) children : Vec<ASTNode>,
+    pub (crate) i : usize,
+    pub (crate) token_start : usize,
+    pub (crate) poisoned : bool,
+    pub (crate) alt_id : usize,
+    pub (crate) term_idx : u16,
 }
 
 impl<'a> std::fmt::Debug for WorkState<'a> {
@@ -222,8 +247,8 @@ fn handle_matchterm(
                 }
                 MatchDirective::Hoist => if ws.children.len() > 0
                 {
-                    let x = ws.children.pop().unwrap();
-                    if let Some(mut c) = x.children
+                    let mut x = ws.children.pop().unwrap();
+                    if let Some(mut c) = x.children.take()
                     {
                         ws.children.append(&mut c);
                     }
@@ -231,8 +256,8 @@ fn handle_matchterm(
                 }
                 MatchDirective::HoistIfUnit => if ws.children.len() > 0
                 {
-                    let x = ws.children.pop().unwrap();
-                    if let Some(mut c) = x.children && c.len() == 1
+                    let mut x = ws.children.pop().unwrap();
+                    if let Some(mut c) = x.children.take() && c.len() == 1
                     {
                         ws.children.append(&mut c);
                     }
@@ -522,7 +547,7 @@ pub (crate) fn pred_recdec_parse_impl_lifo(
 ) -> Result<ASTNode, Box<PrdError>>
 {
     let mut stack : Vec<WorkState> = vec!();
-    stack.reserve(1024);
+    stack.reserve(128);
     let mut ready_child : Option<(Result<_, _>, u32)> = None;
     let mut ws = make_workstate(&global.g.points[gp_id], _token_start);
     
@@ -730,32 +755,45 @@ pub (crate) fn pred_recdec_parse_impl_lifo(
 }
 
 /// Visit the AST with a possibly-impure callback. The AST itself cannot be modified this way.
-///
+/// 
+/// The AST is visited according to depth-first pre-order. In other words, for `A{B{C D}E}`, it visits A, then B, then C, then D, then E.
+/// 
 /// Takes a function that returns whether it's OK to also visit the children of this node.
 #[allow(unused)]
 pub fn visit_ast(n : &ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
 {
+    visit_ast_recursive(n, f, 0);
+}
+pub (crate) fn visit_ast_iterative(n : &ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool)
+{
+    let mut v = vec!(n);
+    while let Some(n) = v.pop()
+    {
+        let flag = f(n);
+        if flag && let Some(c) = &n.children
+        {
+            for c in c.iter().rev() // yes
+            {
+                v.push(c); // pushed and popped in FILO order, not FIFO. thus the .rev().
+            }
+        }
+    }
+}
+pub (crate) fn visit_ast_recursive(n : &ASTNode, f : &mut dyn FnMut(&ASTNode) -> bool, depth : usize)
+{
+    if depth > 100
+    {
+        return visit_ast_iterative(n, f);
+    }
     let flag = f(n);
     if flag && let Some(c) = &n.children
     {
         for c in c.iter()
         {
-            visit_ast(c, f);
+            visit_ast_recursive(c, f, depth + 1);
         }
     }
 }
-
-/// Arguments:
-/// - `&mut PrdGlobal` - context
-/// - `&[Token]` - tokenstream
-/// - `usize` - position in tokenstream.
-pub type Guard = Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>;
-/// Arguments:
-/// - `&mut PrdGlobal` - context
-/// - `&[Token]` - tokenstream
-/// - `usize` - position in tokenstream.
-/// - `&mut Vec<ASTNode>` - current partially-produced AST item.
-pub type Hook = Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>;
 
 #[allow(unused)]
 /// *Recursive implementation:* Parse the given token stream (produced by [`bnf::tokenize`](`super::bnf::tokenize`)) into an AST, using the given [`bnf::Grammar`](`super::bnf::Grammar`), and taking the given root rule name as the starting point.
@@ -795,6 +833,8 @@ pub fn parse_recursive(
 /// However, this version is about 4% slower than [`parse`]. I'm going to keep working on optimizing it.
 /// 
 /// This implementation does not yet support the "deep_errors" feature. When it does, adding support for it will not be considered a breaking change.
+/// 
+/// The exact algorithm may change in any update, as long as it produces the same result and is safe in the same circumstances.
 /// 
 /// See also: [`ASTNode`], [`parse_recursive`]
 pub fn parse(
@@ -839,7 +879,7 @@ pub fn print_ast_pred_recdec(ast : &ASTNode, string_cache_inv : &Vec<Rc<String>>
 }
 
 #[allow(unused)]
-/// For testing only: convert the AST's shape to a string.
+/// For testing only: convert the AST's shape to a string. Example output: `++.-..+--`
 ///
 /// Parents turn into `+<contents>-`. If poisoned (i.e. containing any error recovery), they're prefixed with `p`.
 ///

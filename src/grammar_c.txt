@@ -7,8 +7,8 @@ __BRACKET_PAIRS ::= { } | ( ) | [ ]
 __RESERVED_WORDS ::=
     auto break case char const continue default do double else enum extern float for goto
     if inline __inline__ __inline int long
-    register restrict __cdecl __stdcall __restrict__ return short signed sizeof static struct switch typedef union unsigned void volatile
-    while _Bool _Complex _Imaginary _Float16 __bf16 __int128
+    register restrict __cdecl __stdcall __restrict __restrict__ return short signed __signed__ sizeof static struct switch typedef union unsigned void volatile
+    while _Bool _Complex _Imaginary _Float16 _Float32 _Float64 _Float128 _Float32x _Float64x __bf16 __int128 __float128 
 
 S ::= translation_unit
 
@@ -27,7 +27,7 @@ declaration_specifiers_star_guarded ::=
     | #empty
 declaration_specifier ::=
     @peekr(0, r`typedef|extern|static|auto|register`r) storage_class_specifier $become attribute_list
-    | @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict__|volatile`r) type_qualifier $become attribute_list
+    | @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict|__restrict__|volatile`r) type_qualifier $become attribute_list
     | @peekr(0, r`inline|__inline__|__inline`r) function_specifier $become attribute_list
     | type_specifier $become attribute_list
 
@@ -39,13 +39,13 @@ attribute_list ::=
 storage_class_specifier ::=
     @auto R`typedef|extern|static|auto|register`r
 type_specifier ::=
-    @auto R`void|char|short|int|__builtin_va_list|long|float|double|signed|unsigned|_Bool|_Complex|_Imaginary`r
+    @auto R`void|char|short|int|__builtin_va_list|long|float|double|signed|__signed__|unsigned|_Bool|_Complex|_Imaginary|_Float16|_Float32|_Float64|_Float128|_Float32x|_Float64x`r
     | @peek(0, "enum") enum_specifier
     | @peekr(0, r`struct|union`r) struct_or_union_specifier
     | @peekr(0, r`typeof|__typeof__`r) typeof_specifier
     | typedef_name
 type_qualifier ::=
-    @auto R`const|restrict|__cdecl|__stdcall|__restrict__|volatile`r
+    @auto R`const|restrict|__cdecl|__stdcall|__restrict|__restrict__|volatile`r
 
 typeof_specifier ::=
     R`typeof|__typeof__`r "(" many_balanced ")"
@@ -74,11 +74,11 @@ struct_declaration ::=
 specifier_qualifier_list ::=
     specifier_qualifier specifier_qualifier_star
 specifier_qualifier ::=
-    @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict__|volatile`r) type_qualifier
+    @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict|__restrict__|volatile`r) type_qualifier
     | type_specifier
 specifier_qualifier_star ::=
     @peekr(1, r`[\[;:=]`r) #empty
-    | @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict__|volatile`r) type_qualifier $become specifier_qualifier_star
+    | @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict|__restrict__|volatile`r) type_qualifier $become specifier_qualifier_star
     | @guard(is_type_specifier_start) type_specifier $become specifier_qualifier_star
     | #empty
 struct_declarator_list ::=
@@ -139,7 +139,7 @@ pointer_star ::=
 type_qualifier_list ::=
     type_qualifier type_qualifier_star
 type_qualifier_star ::=
-    @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict__|volatile`r) type_qualifier $become type_qualifier_star
+    @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict|__restrict__|volatile`r) type_qualifier $become type_qualifier_star
     | #empty
 
 parameter_type_list ::=
@@ -239,7 +239,7 @@ NA_abstract_declarator_wrapped_and_maybe2 ::=
 # agnostic to what kind of declarator we're in
 any_direct_declarator_core_sq ::=
     @auto "static" type_qualifier_star assignment_expression "]"
-    | @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict__|volatile`r) type_qualifier_list $become any_direct_declarator_chunk_square3
+    | @peekr(0, r`const|restrict|__cdecl|__stdcall|__restrict|__restrict__|volatile`r) type_qualifier_list $become any_direct_declarator_chunk_square3
     | @auto "]"
     | @peek(0, "*") $become any_declarator_chunk_square_ptrpart
     | assignment_expression "]"

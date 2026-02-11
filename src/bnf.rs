@@ -51,6 +51,7 @@ impl<T : PartialEq> PartialEq for K<T> {
 impl<T : Eq> Eq for K<T> { }
 
 #[derive(Debug, Clone)]
+/// Wrapper around a Regex, allowing it to remember whether a given interned `Rc<String>` or `u32` (interned string ID) matches. This is an optimization.
 pub struct RegexCacher {
     r : Regex,
     cache : Rc<RefCell<HashMap<K<String>, bool>>>,
@@ -723,6 +724,8 @@ pub fn bnf_to_grammar(s : &str) -> Result<Grammar, String>
 pub struct Token {
     /// Interned string ID, see [`Grammar::string_cache_inv`]
     pub text : u32,
+    /// What line did it come from? **Note:** if you use regex comments, this will be inaccurate.
+    pub line : u32,
     /// For bracket pairs: how far away, in which direction, is the paired bracket? In terms of tokens.
     pub pair : isize,
 }
@@ -846,6 +849,7 @@ pub fn tokenize(
     }
     */
     
+    let mut line = 1;
     'top: while !s.is_empty()
     {
         if get_char_at_byte(s, 0) as u32 <= 0x20
@@ -854,6 +858,10 @@ pub fn tokenize(
             {
                 while !s.is_empty() && matches!(get_char_at_byte(s, 0), ' ' | '\r' | '\n' | '\t')
                 {
+                    if matches!(get_char_at_byte(s, 0), '\n')
+                    {
+                        line += 1;
+                    }
                     s = &s[1..]; // ascii whitespace is always 1 byte long
                 }
                 if s.is_empty() { break; }
@@ -900,6 +908,10 @@ pub fn tokenize(
                 let mut nest = 1;
                 while s.len() > 0 && nest > 0
                 {
+                    if matches!(get_char_at_byte(s, 0), '\n')
+                    {
+                        line += 1;
+                    }
                     if s.starts_with(l) { nest += 1; }
                     s = &s[get_char_at_byte(s, 0).len_utf8()..];
                     if s.starts_with(r) { nest -= 1; }
@@ -916,6 +928,10 @@ pub fn tokenize(
                 s = &s[l.len()..];
                 while s.len() > 0 && !s.starts_with(r)
                 {
+                    if matches!(get_char_at_byte(s, 0), '\n')
+                    {
+                        line += 1;
+                    }
                     s = &s[get_char_at_byte(s, 0).len_utf8()..];
                 }
                 s = &s[r.len()..];
@@ -955,7 +971,7 @@ pub fn tokenize(
         //let text_info = string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &s[..longest]);
         //let text = text_info.1;
         let text = string_cache_lookup_id(&mut g.string_cache, &mut g.string_cache_inv, &s[..longest]);
-        let mut token = Token { text, pair : 0 };
+        let mut token = Token { text, line, pair : 0 };
         
         /*
         if let Some(r2) = found_regex

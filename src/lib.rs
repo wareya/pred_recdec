@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 //! # Predicated Recursive Descent
 //! 
 //! aka pred recdec
@@ -129,8 +131,12 @@
 //! - `__COMMENT_REGEXES` - Same, but formed as a regex. These are slower than the above, because the Rust `regex` crate doesn't have a JIT.
 //! - `__RESERVED_WORDS` - e.g. `::= auto break case` - Specifies a list of token contents that are not allowed to be "accepted" by regex terminals like ```r`[a-zA-Z_]+`r```
 
+/// Module for BNF and Grammar-related stuff.
 pub mod bnf;
+
+/// Module for parsing and AST-related stuff.
 pub mod ast;
+
 mod json;
 
 // Thing
@@ -225,6 +231,6 @@ mod test {
         println!("{}", s);
         assert_eq!(s, "++-+..-+.-.+..-.-");
         
-        assert_eq!(*g.string_cache_inv[ast.children.unwrap()[1].text as usize], "ax");
+        assert_eq!(*g.string_cache_inv[ast.children.as_ref().unwrap()[1].text as usize], "ax");
     }
 }

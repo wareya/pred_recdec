@@ -129,7 +129,7 @@ dependencies = [
 
 [[package]]
 name = "pred-recdec"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "mimalloc",
  "regex",
