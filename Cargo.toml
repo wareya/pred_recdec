@@ -31,6 +31,7 @@ required-features = ["build_binaries"]
 regex = "=1.8" # much faster than any other version series
 rustc-hash = "2.1.1"
 mimalloc = { version = "0.1.48", optional = true }
+resharp = "0.1.0"
 
 
 [lints.clippy]

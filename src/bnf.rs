@@ -3,6 +3,7 @@ type HashSet<K> = std::collections::HashSet::<K, crate::HashBuilder>;
 use std::rc::Rc;
 use std::cell::RefCell;
 use regex::Regex as Regex;
+//use resharp::Regex as Regex;
 //use regex::bytes::Regex as Regex;
 //use pcre2::bytes::Regex as Regex;
 
@@ -14,27 +15,37 @@ pub (crate) fn get_char_at_byte(s : &str, i : usize) -> char
 }
 /// One-to-one wrapper around Regex::new().
 pub fn new_regex(s : &str) -> Result<Regex, regex::Error>
+//pub fn new_regex(s : &str) -> Result<Regex, resharp::Error>
 //pub (crate) fn new_regex(s : &str) -> Result<Regex, pcre2::Error>
 {
+    //println!("{}", s);
     Regex::new(s)
     //regex::RegexBuilder::new(s).unicode(false).build()
     //pcre2::bytes::RegexBuilder::new().jit(true).build(s)
 }
 
 pub (crate) fn regex_find<'a>(r : &Regex, s : &'a str) -> Option<regex::Match<'a>>
+//pub (crate) fn regex_find<'a>(r : &Regex, s : &'a str) -> Option<resharp::Match>
 //pub (crate) fn regex_find<'a>(r : &Regex, s : &'a str) -> Option<pcre2::bytes::Match<'a>>
 //pub (crate) fn regex_find<'a>(r : &Regex, s : &'a str) -> Option<regex::bytes::Match<'a>>
 {
     //r.find(s.as_bytes())
     //r.find(s.as_bytes()).unwrap()
     r.find(s)
+    //r.find_all(s.as_bytes()).unwrap().into_iter().nth(0)
 }
 pub (crate) fn regex_is_match<'a>(r : &Regex, s : &'a str) -> bool
 {
     //r.is_match(s.as_bytes())
     //r.is_match(s.as_bytes()).unwrap()
     r.is_match(s)
+    //r.is_match(s.as_bytes()).unwrap()
 }
+
+//pub (crate) fn rem_end(r : &resharp::Match) -> usize { r.end }
+//pub (crate) fn rem_start(r : &resharp::Match) -> usize { r.start }
+pub (crate) fn rem_end(r : &regex::Match) -> usize { r.end() }
+pub (crate) fn rem_start(r : &regex::Match) -> usize { r.start() }
 
 
 #[derive(Debug, Clone, Hash)]
@@ -50,12 +61,30 @@ impl<T : PartialEq> PartialEq for K<T> {
 }
 impl<T : Eq> Eq for K<T> { }
 
-#[derive(Debug, Clone)]
 /// Wrapper around a Regex, allowing it to remember whether a given interned `Rc<String>` or `u32` (interned string ID) matches. This is an optimization.
 pub struct RegexCacher {
+    p : String,
     r : Regex,
     cache : Rc<RefCell<HashMap<K<String>, bool>>>,
     cache2 : Rc<RefCell<HashMap<u32, bool>>>,
+}
+
+impl std::fmt::Debug for RegexCacher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegexCacher")
+           .finish() // Must call .finish() to complete the output
+    }
+}
+
+impl Clone for RegexCacher {
+    fn clone(&self) -> Self {
+        Self {
+            p : self.p.clone(),
+            r : new_regex(&self.p).unwrap(),
+            cache : self.cache.clone(),
+            cache2 : self.cache2.clone(),
+        }
+    }
 }
 
 impl RegexCacher {
@@ -63,15 +92,23 @@ impl RegexCacher {
     ///
     /// This is faster than whatever caching Regex does internally because of string interning.
     #[allow(unused)]
-    pub fn new(r : Regex) -> RegexCacher
+    pub fn new(s : String, r : Regex) -> RegexCacher
     {
         let cache = Rc::new(RefCell::new(HashMap::default()));
         let cache2 = Rc::new(RefCell::new(HashMap::default()));
-        RegexCacher { r, cache, cache2 }
+        RegexCacher { p : s, r, cache, cache2 }
     }
-    pub (crate) fn new_with_pool(r : Regex, cache_pool : &mut HashMap<String, (Rc<RefCell<HashMap<K<String>, bool>>>, Rc<RefCell<HashMap<u32, bool>>>)>) -> RegexCacher
+    #[allow(unused)]
+    /// Build one from a `&str`.
+    pub fn new_s(s : &str) -> RegexCacher
     {
-        let s = r.as_str().to_string();
+        let r = new_regex(s).unwrap();
+        let cache = Rc::new(RefCell::new(HashMap::default()));
+        let cache2 = Rc::new(RefCell::new(HashMap::default()));
+        RegexCacher { p : s.to_string(), r, cache, cache2 }
+    }
+    pub (crate) fn new_with_pool(s : String, r : Regex, cache_pool : &mut HashMap<String, (Rc<RefCell<HashMap<K<String>, bool>>>, Rc<RefCell<HashMap<u32, bool>>>)>) -> RegexCacher
+    {
         let mut cache = Rc::new(RefCell::new(HashMap::default()));
         let mut cache2 = Rc::new(RefCell::new(HashMap::default()));
         if let Some(cached) = cache_pool.get(&s)
@@ -84,7 +121,7 @@ impl RegexCacher {
             cache_pool.insert(s.clone(), (cache.clone(), cache2.clone()));
         }
         
-        RegexCacher { r, cache, cache2 }
+        RegexCacher { p : s, r, cache, cache2 }
     }
     /// Does the regex match the string?
     #[inline(never)]
@@ -474,7 +511,7 @@ pub (crate) fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Resul
                     let pattern_all = format!("\\A(?:{pattern})\\z"); // full match (for parsing)
                     let pattern = format!("\\A(?:{pattern})"); // at start (for tokenization)
                     let re2 = new_regex(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
-                    let re2 = RegexCacher::new_with_pool(re2, &mut cache_pool);
+                    let re2 = RegexCacher::new_with_pool(pattern_all, re2, &mut cache_pool);
                     lex_regexes.insert(pattern, re2.clone());
                     matching_terms.push(MatchingTermE::TermRegex(re2).to());
                     continue;
@@ -485,7 +522,7 @@ pub (crate) fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Resul
                     let pattern = &term_str[2..term_str.len() - 2];
                     let pattern_all = format!("\\A(?:{pattern})\\z"); // full match (for parsing)
                     let re2 = new_regex(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
-                    matching_terms.push(MatchingTermE::TermRegex(RegexCacher::new_with_pool(re2, &mut cache_pool)).to());
+                    matching_terms.push(MatchingTermE::TermRegex(RegexCacher::new_with_pool(pattern_all, re2, &mut cache_pool)).to());
                     continue;
                 }
                 if term_str.starts_with("A`") && term_str.ends_with("`r") && term_str.len() >= 4
@@ -493,7 +530,7 @@ pub (crate) fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Resul
                     let pattern = &term_str[2..term_str.len() - 2];
                     let pattern_all = format!("\\A(?:{pattern})");
                     let re2 = new_regex(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
-                    matching_terms.push(MatchingTermE::TermRegex(RegexCacher::new_with_pool(re2, &mut cache_pool)).to());
+                    matching_terms.push(MatchingTermE::TermRegex(RegexCacher::new_with_pool(pattern_all, re2, &mut cache_pool)).to());
                     continue;
                 }
                 if matches!(&**term_str, "@RECOVER" | "@recover" | "@RECOVER_BEFORE" | "@recover_before") && i < raw_alt.len()
@@ -511,7 +548,7 @@ pub (crate) fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Resul
                     let re2 = new_regex(&pattern_all).map_err(|e| format!("Invalid regex '{}': {}", pattern_all, e))?;
                     // TODO: make regex cachers use interior mutability and share the cache
                     if recover.is_some() { Err(format!("Rule {name} has multiple @recover items. Only one is supported."))? }
-                    recover = Some((RegexCacher::new_with_pool(re2, &mut cache_pool), matches!(&**term_str, "@RECOVER" | "@recover")));
+                    recover = Some((RegexCacher::new_with_pool(pattern_all, re2, &mut cache_pool), matches!(&**term_str, "@RECOVER" | "@recover")));
                     i += 1;
                     continue;
                 }
@@ -559,11 +596,11 @@ pub (crate) fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Resul
                         // TODO: make regex cachers use interior mutability and share the cache
                         if term_str == "@PEEKRES" || term_str == "@peekres"
                         {
-                            matching_terms.push(MatchingTermE::PeekRes(n, RegexCacher::new_with_pool(re2, &mut cache_pool)).to());
+                            matching_terms.push(MatchingTermE::PeekRes(n, RegexCacher::new_with_pool(pattern_all, re2, &mut cache_pool)).to());
                         }
                         else
                         {
-                            matching_terms.push(MatchingTermE::PeekR(n, RegexCacher::new_with_pool(re2, &mut cache_pool)).to());
+                            matching_terms.push(MatchingTermE::PeekR(n, RegexCacher::new_with_pool(pattern_all, re2, &mut cache_pool)).to());
                         }
                     }
                     i += 5;
@@ -794,7 +831,7 @@ pub fn tokenize(
         let mut covered = false;
         for r in &g.regexes
         {
-            if let Some(loc) = regex_find(&r.0, l).map(|x| x.end() - x.start())
+            if let Some(loc) = regex_find(&r.0, l).map(|x| rem_end(&x) - rem_start(&x))
             {
                 if loc == l.len()
                 {
@@ -875,7 +912,7 @@ pub fn tokenize(
             if let Some(x) = regex_find(re, s)
             {
                 //s = &s[x.len()..];
-                s = &s[x.end() - x.start()..];
+                s = &s[rem_end(&x) - rem_start(&x)..];
                 continue 'top;
             }
         }
@@ -945,7 +982,7 @@ pub fn tokenize(
         {
             if let Some(loc) = regex_find(&r.0, s)
             {
-                let len = loc.end() - loc.start();
+                let len = rem_end(&loc) - rem_start(&loc);
                 //found_regex = Some(&r.1);
                 longest = longest.max(len);
             }
@@ -953,7 +990,7 @@ pub fn tokenize(
         // Literals pass.
         if let Some(all_literals_regex) = &all_literals_regex && let Some(loc) = regex_find(&all_literals_regex, s)
         {
-            let len = loc.end() - loc.start();
+            let len = rem_end(&loc) - rem_start(&loc);
             //found_regex = None;
             longest = longest.max(len);
         }

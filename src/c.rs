@@ -92,11 +92,11 @@ fn main_impl()
         {
             let nj = &tokens[i].text;
             //let n = &global.g.string_cache_inv[*nj as usize];
-            let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new(new_regex(
+            let r = global.udata_r.entry(15238539).or_insert_with(|| RegexCacher::new_s(
                 r#"(?x)\A(?:typeof|__typeof__|void
                 |__builtin_va_list|char|short|int|long|float|double|signed|__signed__|unsigned|_Bool|_Complex|_Imaginary|_Float16|_Float32|_Float64|_Float128|_Float32x|_Float64x|__bf16|__int128|__float128|const|volatile|__volatile__
                 |enum|struct|union)\z"#
-            ).unwrap()));
+            ));
             if r.is_match_interned(*nj, &global.g.string_cache_inv)
             {
                 //println_wrap!("!!!! accepting {n} as a type indicator");
@@ -137,13 +137,13 @@ fn main_impl()
             {
                 let nj = &tokens[i].text;
                 //let n = &global.g.string_cache_inv[*nj as usize];
-                let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new(new_regex(
+                let r = global.udata_r.entry(75425463).or_insert_with(|| RegexCacher::new_s(
                     r#"(?x)\A(?:typeof|__typeof__|typedef|extern
                     |__builtin_va_list|static|auto|register|const|restrict
                     |__cdecl|__stdcall
                     |__restrict|__restrict__|volatile|__volatile__|__inline__|__inline|inline|void|char|short
                     |int|long|float|double|signed|__signed__|unsigned|_Bool|_Complex|_Imaginary|_Float16|_Float32|_Float64|_Float128|_Float32x|_Float64x|__bf16|__int128|__float128|enum|struct|union)\z"#
-                ).unwrap()));
+                ));
                 if r.is_match_interned(*nj, &global.g.string_cache_inv)
                 {
                     //println_wrap!("!!!! accepting {n} as a declaration indicator");
@@ -186,9 +186,9 @@ fn main_impl()
                 if &**n == "case" { return GuardResult::Accept; }
                 let nj2 = &tokens[i+1].text;
                 let n2 = &global.g.string_cache_inv[*nj2 as usize];
-                let r = global.udata_r.entry(648245613).or_insert_with(|| RegexCacher::new(new_regex(
+                let r = global.udata_r.entry(648245613).or_insert_with(|| RegexCacher::new_s(
                     r#"^(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*$"#
-                ).unwrap()));
+                ));
                 if &**n2 == ":" && r.is_match_interned(*nj, &global.g.string_cache_inv)
                 {
                     return GuardResult::Accept;
@@ -273,9 +273,9 @@ fn main_impl()
             if i < tokens.len()
             {
                 let nj = &tokens[i].text;
-                let r = global.udata_r.entry(648245613).or_insert_with(|| RegexCacher::new(new_regex(
+                let r = global.udata_r.entry(648245613).or_insert_with(|| RegexCacher::new_s(
                     r#"^(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8}))(?:[a-zA-Z_]|(?:\\u[a-fA-F0-9]{1,4}|\\U[a-fA-F0-9]{1,8})|[0-9])*$"#
-                ).unwrap()));
+                ));
                 if r.is_match_interned(*nj, &global.g.string_cache_inv)
                 {
                     let mut data = global.udata.get_mut::<MyData>();

@@ -133,6 +133,7 @@ version = "0.3.0"
 dependencies = [
  "mimalloc",
  "regex",
+ "resharp",
  "rustc-hash",
  "serde_json",
  "simd-json",
@@ -184,7 +185,7 @@ checksum = "d0ab3ca65655bb1e41f2a8c8cd662eb4fb035e67c3f78da1d61dffe89d07300f"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-syntax",
+ "regex-syntax 0.7.5",
 ]
 
 [[package]]
@@ -192,6 +193,42 @@ name = "regex-syntax"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dbb5fb1acd8a1a18b3dd5be62d25485eb770e05afb408a9627d14d451bae12da"
+
+[[package]]
+name = "regex-syntax"
+version = "0.8.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+
+[[package]]
+name = "resharp"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daa86d6989bf7adaf6f15d4c54fddceec0fe6c34d246ddf5eb4b1f501c4278a0"
+dependencies = [
+ "memchr",
+ "resharp-algebra",
+ "resharp-parser",
+]
+
+[[package]]
+name = "resharp-algebra"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cef74c990b2fe5d124d6b3ca786c4879d6b86a585cfa2b1793cf3d232b6d8f2b"
+dependencies = [
+ "smallvec",
+]
+
+[[package]]
+name = "resharp-parser"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d250df4a12bdda9caa858360f26bda12ab0a14e05a48b11e337b9110a119c5e"
+dependencies = [
+ "regex-syntax 0.8.10",
+ "resharp-algebra",
+]
 
 [[package]]
 name = "rustc-hash"
@@ -273,6 +310,12 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "smallvec"
+version = "1.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "syn"
