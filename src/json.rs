@@ -55,7 +55,7 @@ mod tests {
     }
 
     #[test]
-    fn test() {
+    fn test_jsontests() {
         let grammar_source = std::fs::read_to_string("src/grammar_json.txt").unwrap();
         let mut g = bnf_to_grammar(&grammar_source).unwrap();
         
@@ -92,6 +92,11 @@ mod tests {
                         ok_serde = _v2.is_ok();
                         
                         let tokens = tokenize(&mut g, content).map_err(|e| e.err_message)?;
+                        let ts = tokens.iter().map(|x| &g.string_cache_inv[x.text as usize]).collect::<Vec<_>>();
+                        if ts.len() < 100
+                        {
+                            println!("(tokenized) {:?}", ts);
+                        }
                         parse(&g, "json", &tokens[..], guards.clone(), hooks.clone()).map_err(|e| e.err_message)
                     };
                     
@@ -115,7 +120,7 @@ mod tests {
                 if fname.starts_with("y_") { assert!(is_ok); }
                 if fname.starts_with("n_") { assert!(!is_ok); }
                 if is_ok != ok_simd { println!("---- INFO: simdjson is wrong"); }
-                if is_ok != ok_serde { println!("---- INFO: serde_jsoin is wrong"); }
+                if is_ok != ok_serde { println!("---- INFO: serde_json is wrong"); }
             }
         }
         if n < 10

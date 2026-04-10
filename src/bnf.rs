@@ -18,8 +18,12 @@ pub fn new_regex(s : &str) -> Result<Regex, regex::Error>
 //pub fn new_regex(s : &str) -> Result<Regex, resharp::Error>
 //pub (crate) fn new_regex(s : &str) -> Result<Regex, pcre2::Error>
 {
-    //println!("{}", s);
-    Regex::new(s)
+    let s = s.to_string();
+    let s = s.replace("&", "[&]");
+    let s = s.replace("~", "[~]");
+    let s = s.replace("_", "[_]");
+    println!("{}", s);
+    Regex::new(&s)
     //regex::RegexBuilder::new(s).unicode(false).build()
     //pcre2::bytes::RegexBuilder::new().jit(true).build(s)
 }
@@ -33,6 +37,7 @@ pub (crate) fn regex_find<'a>(r : &Regex, s : &'a str) -> Option<regex::Match<'a
     //r.find(s.as_bytes()).unwrap()
     r.find(s)
     //r.find_all(s.as_bytes()).unwrap().into_iter().nth(0)
+    //r.find_anchored(s.as_bytes()).unwrap()
 }
 pub (crate) fn regex_is_match<'a>(r : &Regex, s : &'a str) -> bool
 {
@@ -40,6 +45,7 @@ pub (crate) fn regex_is_match<'a>(r : &Regex, s : &'a str) -> bool
     //r.is_match(s.as_bytes()).unwrap()
     r.is_match(s)
     //r.is_match(s.as_bytes()).unwrap()
+    //r.find_anchored(s.as_bytes()).unwrap().is_some()
 }
 
 //pub (crate) fn rem_end(r : &resharp::Match) -> usize { r.end }
@@ -441,7 +447,7 @@ pub (crate) fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Resul
             {
                 set.push(s.clone());
             }
-            reserved = Some(build_literal_regex(&set, true));
+            reserved = Some(build_literal_regex(&set, true).0);
             continue;
         }
         if name == "__BRACKET_PAIRS" || name == "__COMMENT_PAIRS" || name == "__COMMENT_PAIRS_NESTED"
@@ -768,7 +774,7 @@ pub struct Token {
 }
 
 // Sort literals from grammar by length and combine them into a single match-longest regex.
-pub (crate) fn build_literal_regex(literals : &Vec<String>, terminated : bool) -> Regex
+pub (crate) fn build_literal_regex(literals : &Vec<String>, terminated : bool) -> (Regex, String)
 {
     let mut text_token_regex_s = "\\A(?:".to_string();
     
@@ -784,7 +790,7 @@ pub (crate) fn build_literal_regex(literals : &Vec<String>, terminated : bool) -
     text_token_regex_s += ")";
     if terminated { text_token_regex_s += "\\z"; }
     let text_token_regex = new_regex(&text_token_regex_s).unwrap();
-    text_token_regex
+    (text_token_regex, text_token_regex_s)
 }
 
 /// Tokenizer error state.
@@ -831,8 +837,10 @@ pub fn tokenize(
         let mut covered = false;
         for r in &g.regexes
         {
-            if let Some(loc) = regex_find(&r.0, l).map(|x| rem_end(&x) - rem_start(&x))
+            if let Some((lo, hi)) = regex_find(&r.0, l).map(|x| (rem_start(&x), rem_end(&x)))
             {
+                if lo != 0 { continue; }
+                let loc = hi - lo;
                 if loc == l.len()
                 {
                     covered = true;
@@ -845,7 +853,7 @@ pub fn tokenize(
             lit_filtered.push(l.clone());
         }
     }
-    let all_literals_regex = if lit_filtered.len() > 0
+    let lit_regex = if lit_filtered.len() > 0
     {
         Some(build_literal_regex(&lit_filtered, false))
     }
@@ -854,6 +862,8 @@ pub fn tokenize(
         None
     };
     //println!("{}", all_literals_regex);
+    
+    println!("asdoawreguiog");
     
     for text in g.literals.iter()
     {
@@ -911,6 +921,7 @@ pub fn tokenize(
         {
             if let Some(x) = regex_find(re, s)
             {
+                if rem_start(&x) != 0 { continue; }
                 //s = &s[x.len()..];
                 s = &s[rem_end(&x) - rem_start(&x)..];
                 continue 'top;
@@ -982,17 +993,22 @@ pub fn tokenize(
         {
             if let Some(loc) = regex_find(&r.0, s)
             {
+                if rem_start(&loc) != 0 { continue; }
                 let len = rem_end(&loc) - rem_start(&loc);
                 //found_regex = Some(&r.1);
                 longest = longest.max(len);
             }
         }
         // Literals pass.
-        if let Some(all_literals_regex) = &all_literals_regex && let Some(loc) = regex_find(&all_literals_regex, s)
+        if let Some(lit_regex) = &lit_regex && let Some(loc) = regex_find(&lit_regex.0, s)
         {
-            let len = rem_end(&loc) - rem_start(&loc);
-            //found_regex = None;
-            longest = longest.max(len);
+            if rem_start(&loc) == 0
+            {
+                let len = rem_end(&loc) - rem_start(&loc);
+                //found_regex = None;
+                longest = longest.max(len);
+                //println!("? matched\n  {}\n against\n  {}", lit_regex.1, &s[..len]);
+            }
         }
         if longest == 0
         {
@@ -1004,6 +1020,12 @@ pub fn tokenize(
                 pairing_error : None,
             });
         }
+        /*
+        if tokens.len() > 1000
+        {
+            println!("! match is\n  {}\n  (len {}. remain {})", &s[..longest], longest, s.len());
+        }
+        */
         
         //let text_info = string_cache_lookup(&mut g.string_cache, &mut g.string_cache_inv, &s[..longest]);
         //let text = text_info.1;

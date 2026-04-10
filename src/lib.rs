@@ -163,13 +163,14 @@ mod test {
         | @auto r`[a-zA-Z_][a-zA-Z_0-9]*|[0-9\.]*`r $become itemlist
         "#;
         
-        let test_source = r#"
-        (a b (q x)kfwaiei i  9 (af0f1a) () () )
-        "#;
+        //let test_source = r#"(a b (q x)kfwaiei i  9 (af0f1a) () () )"#;
+        let test_source = r#"((q x)kfwaiei)"#;
         
         let mut g = bnf_to_grammar(&grammar_source).unwrap();
         let tokens = tokenize(&mut g, &test_source);
         let tokens = tokens.unwrap();
+        let ts = tokens.iter().map(|x| &g.string_cache_inv[x.text as usize]).collect::<Vec<_>>();
+        println!("{:?}", ts);
         
         use std::rc::Rc;
         let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()));
