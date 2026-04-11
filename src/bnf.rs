@@ -22,7 +22,7 @@ pub fn new_regex(s : &str) -> Result<Regex, regex::Error>
     let s = s.replace("&", "[&]");
     let s = s.replace("~", "[~]");
     let s = s.replace("_", "[_]");
-    println!("{}", s);
+    //println!("{}", s);
     Regex::new(&s)
     //regex::RegexBuilder::new(s).unicode(false).build()
     //pcre2::bytes::RegexBuilder::new().jit(true).build(s)
@@ -220,6 +220,7 @@ pub(crate) enum MatchingTermE {
     TermLit(u32),
     TermRegex(RegexCacher),
     Directive(MatchDirective),
+    Effect(Rc<String>),
     Hook(Rc<String>),
     _AutoTemp,
     
@@ -624,11 +625,23 @@ pub (crate) fn grammar_convert(input: &Vec<(String, Vec<Vec<String>>)>) -> Resul
                     i += 3;
                     continue;
                 }
+                if (term_str == "!EFFECT" || term_str == "!effect") && i + 2 < raw_alt.len()
+                {
+                    if raw_alt[i] != "(" || raw_alt[i+2] != ")"
+                    {
+                        return Err(format!("Invalid effect syntax: must be !effect(name)"));
+                    }
+                    let literal = &raw_alt[i+1];
+                    let s = string_cache_lookup(&mut string_cache, &mut string_cache_inv, &literal).0;
+                    matching_terms.push(MatchingTermE::Effect(s).to());
+                    i += 3;
+                    continue;
+                }
                 if (term_str == "!HOOK" || term_str == "!hook") && i + 2 < raw_alt.len()
                 {
                     if raw_alt[i] != "(" || raw_alt[i+2] != ")"
                     {
-                        return Err(format!("Invalid hook syntax: must be @hook(name)"));
+                        return Err(format!("Invalid hook syntax: must be !hook(name)"));
                     }
                     let literal = &raw_alt[i+1];
                     let s = string_cache_lookup(&mut string_cache, &mut string_cache_inv, &literal).0;
@@ -863,7 +876,7 @@ pub fn tokenize(
     };
     //println!("{}", all_literals_regex);
     
-    println!("asdoawreguiog");
+    //println!("asdoawreguiog");
     
     for text in g.literals.iter()
     {

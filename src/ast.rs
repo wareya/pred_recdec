@@ -80,6 +80,16 @@ pub enum GuardResult {
 /// - `&[Token]` - tokenstream
 /// - `usize` - position in tokenstream.
 pub type Guard = Rc<dyn Fn(&mut PrdGlobal, &[Token], usize) -> GuardResult>;
+
+/// Arguments:
+/// - `&mut PrdGlobal` - context
+/// - `&[Token]` - tokenstream
+/// - `usize` - position in tokenstream.
+/// - `&mut Vec<ASTNode>` - current partially-produced AST item.
+///
+/// Return: `Ok(())` or `Err(human_readable_string)`.
+pub type Effect = Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<(), String>>;
+
 /// Arguments:
 /// - `&mut PrdGlobal` - context
 /// - `&[Token]` - tokenstream
@@ -106,6 +116,10 @@ impl AnyMap {
 pub struct PrdGlobal<'a> {
     /// The guards you passed into the parse function.
     pub (crate) guards : Rc<HashMap<String, Guard>>,
+    /// The effects you passed into the parse function.
+    ///
+    /// Effects differ from hooks in that they cannot move the parse cursor.
+    pub (crate) effects : Rc<HashMap<String, Effect>>,
     /// The hooks you passed into the parse function.
     pub (crate) hooks : Rc<HashMap<String, Hook>>,
     
@@ -122,7 +136,7 @@ pub struct PrdGlobal<'a> {
 pub struct PrdError {
     /// Human-readable error message. Format is not guaranteed and may change arbitrarily.
     #[allow(unused)] pub err_message : String,
-    /// How far into the token stream did we successfully parse? Note: this is NOT
+    /// How far into the token stream did we successfully parse?
     #[allow(unused)] pub token_index : usize,
     /// Which rule's alternations were we inside of? (Index into [`bnf::Grammar::points`](`super::bnf::Grammar::points`))
     #[allow(unused)] pub rule : u32,
@@ -270,6 +284,28 @@ fn handle_matchterm(
                     ws.i += 1;
                 }
             }
+        }
+        MatchingTermE::Effect(name) =>
+        {
+            if let Some(f) = global.effects.get(&**name)
+            {
+                let f = Rc::clone(&f);
+                match f(global, tokens, ws.i, &mut ws.children)
+                {
+                    Ok(_) => { }
+                    Err(e) => build_err!(Some(ws.term_idx as u16), ws, "{}", e)?
+                }
+            }
+            else
+            {
+                build_err!(
+                    Some(ws.term_idx as u16), ws,
+                    "Unknown custom effect {:?} inside of {}",
+                    name, 
+                    global.g.string_cache_inv[ws.chosen_name_id as usize],
+                )?
+            }
+            *matched = true;
         }
         MatchingTermE::Hook(name) =>
         {
@@ -808,13 +844,19 @@ pub (crate) fn visit_ast_recursive(n : &ASTNode, f : &mut dyn FnMut(&ASTNode) ->
 pub fn parse_recursive(
     g : &Grammar, root_rule_name : &str, tokens : &[Token],
     guards : Rc<HashMap<String, Guard>>,
+    effects : Rc<HashMap<String, Effect>>,
     hooks : Rc<HashMap<String, Hook>>,
 ) -> Result<ASTNode, Box<PrdError>>
 {
     let gp_id = g.by_name.get(root_rule_name).unwrap();
-    let mut global = PrdGlobal { guards, hooks, udata : <_>::default(), udata_r : <_>::default(), g };
+    let mut global = PrdGlobal { guards, effects, hooks, udata : <_>::default(), udata_r : <_>::default(), g };
     
     if let Some(f) = global.hooks.get("init")
+    {
+        let f = Rc::clone(&f);
+        let _ = f(&mut global, tokens, 0, &mut vec!());
+    }
+    if let Some(f) = global.effects.get("init")
     {
         let f = Rc::clone(&f);
         let _ = f(&mut global, tokens, 0, &mut vec!());
@@ -840,13 +882,19 @@ pub fn parse_recursive(
 pub fn parse(
     g : &Grammar, root_rule_name : &str, tokens : &[Token],
     guards : Rc<HashMap<String, Guard>>,
+    effects : Rc<HashMap<String, Effect>>,
     hooks : Rc<HashMap<String, Hook>>,
 ) -> Result<ASTNode, Box<PrdError>>
 {
     let gp_id = g.by_name.get(root_rule_name).unwrap();
-    let mut global = PrdGlobal { guards, hooks, udata : <_>::default(), udata_r : <_>::default(), g };
+    let mut global = PrdGlobal { guards, effects, hooks, udata : <_>::default(), udata_r : <_>::default(), g };
     
     if let Some(f) = global.hooks.get("init")
+    {
+        let f = Rc::clone(&f);
+        let _ = f(&mut global, tokens, 0, &mut vec!());
+    }
+    if let Some(f) = global.effects.get("init")
     {
         let f = Rc::clone(&f);
         let _ = f(&mut global, tokens, 0, &mut vec!());

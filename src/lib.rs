@@ -32,7 +32,7 @@
 //! 
 //! This is *not* a PEG or packrat thing.
 //!
-//! Performance: varies between 50% and 400% slower than a native machine code handwritten parser. For more complex grammars, the performance loss is less. Totally usable!
+//! Performance: varies between 50% and 400% slower than a native machine code handwritten parser. Usually much closer to 50%, and the more complex the grammar is, the closer the performance is to the 50% side of the scale. Totally usable!
 //! 
 //! Simple example (totally not lisp), capable of parsing the input `(a b (q x)kfwaiei i  9 (af0f1a) () () )`:
 //! 
@@ -85,7 +85,7 @@
 //!
 //! `#` - Comments until the end of the line, outside of strings/regexes.
 //!
-//! `"...` - Terms starting with `"` are inline strings. They register with the tokenizer and check the entire body of a token. (Strings are interned, so this is O(1).)
+//! `"...` - Terms starting with `"` are inline strings, like `"if"`. They register with the tokenizer and check the entire body of a token. (Strings are interned, so this is O(1).)
 //! 
 //! Terms starting with ```r`...```, ```R`...```, or ```A`...``` are inline regexes:
 //! - ```r`...`r``` registers with the tokenizer and does a full token match (i.e. it's given an implicit trailing `\z` during token matching).
@@ -94,17 +94,18 @@
 //!
 //! Regex results are cached, so checking them is amortized O(1).
 //!
-//! Terms beginning with `!` currently only have one kind:
-//! - `!hook`, e.g. `!hook(fix_infix_expr)`, are calls to user-provided code. This is **allowed to be impure**, e.g. management of **typedef symbol tables**.
-//!
 //! Terms beginning with `@` are guards/predicates. They determine, at the start of a given alternation/production, whether it is valid. If true, that production is taken, and none of the others will be attempted (at this location). Remember, there's no backtracking or magic.
 //! - `@peek(N, STRING)` - Checks if, relative to the parse position, the given token contains the given text.
 //! - `@peekr(N, REGEX)` - Same, but only for regexes.
 //! - `@auto item` - Desugars to `@peek(0, item) item` or `@peekr(0, item) item` automatically.
-//! - `@guard(name)` - Calls user-provided code to determine if the production is accepted. This is allowed to be impure, but you should be careful with it, since a path hasn't been committed yet.
+//! - `@guard(name)` - Calls user-provided code to determine if the production is accepted. This is allowed to be impure (e.g. for caches), but should not have observable side effects in the "false" case, since a path hasn't been committed yet.
 //! - `@recover` - Pseudo-guard, is never attempted. Instead, it tells the associated grammar rule that if it fails, it's allowed to recover (into a poisoned state) by seeking for a particular set of tokens.
 //! - `@recover_before` - Same, but stops right before accepting any seek token instead of consuming it.
 //! 
+//! Terms beginning with `!` can run once a production has started being taken, and run user-provided code (provided outside of the grammar):
+//! - `!effect`, e.g. `!effect(fix_infix_expr)`, calls user-provided code. This is **allowed to be impure**, e.g. management of **typedef symbol tables**. However, it **cannot consume input tokens**.
+//! - `!hook`, e.g. `!hook(parse_type)`, is just like `!effect` in all ways except for one: a `hook` is **allowed to consume input tokens**.
+//!
 //! Terms starting with `$` are directives:
 //!- `$become nonterminal` performs a tail call, keeping the current AST node name. This can be used to build lists without smashing the stack.
 //!- `$become_as nonterminal` performs a tail call, replacing the current AST node's name with that of the target.
@@ -118,7 +119,7 @@
 //! 
 //! You'll note that there's no "negative rule-match-check predicate" extension (e.g. no "parse A, but only if it doesn't also parse B"). This is by design. Rule-level negation is way too powerful, and requires an extremely sophisticated parser generator (e.g. packrat) to handle both correctly and cheaply. For any reasonably simple implementation, it would be incompatible with impure hooks. `__RESERVED_WORDS`, described below, is the only exception, because it's easy to define in a sane way.
 //!
-//! For negative token predicates (peeks), you can refactor the grammar slightly, or if it's a particularly complicated peek, write a custom guard. So this isn't a limitation.
+//! For negative token predicates (peeks), you can refactor the grammar in a way that expresses them with positive token predicates, or if it's a particularly complicated peek, you can write a custom guard. In other words, for non-grammatical negative checks, the lack of negative predicates isn't a limitation.
 //!
 //! ## Magic pseudo-rules
 //!
@@ -173,7 +174,7 @@ mod test {
         println!("{:?}", ts);
         
         use std::rc::Rc;
-        let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()));
+        let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()), Rc::new(<_>::default()));
         
         if let Ok(ast) = &ast
         {
@@ -189,7 +190,7 @@ mod test {
         
         let tokens = tokenize(&mut g, &test_source);
         let tokens = tokens.unwrap();
-        let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()));
+        let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()), Rc::new(<_>::default()));
         //println!("{:?}", ast);
         let ast = ast.unwrap_err();
         assert_eq!(ast.token_index, 3);
@@ -225,7 +226,7 @@ mod test {
         
         let tokens = tokenize(&mut g, &test_source);
         let tokens = tokens.unwrap();
-        let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()));
+        let ast = parse(&g, "S", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()), Rc::new(<_>::default()));
         let ast = ast.unwrap();
         print_ast_pred_recdec(&ast, &g.string_cache_inv, 0);
         let s = ast_to_shape_string(&ast);

@@ -71,7 +71,7 @@ fn main_impl()
     type HashMap<K, V> = std::collections::HashMap::<K, V, crate::HashBuilder>;
     type HashSet<V> = std::collections::HashSet::<V, crate::HashBuilder>;
 
-    let mut hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>
+    let mut effects : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<(), String>>>
         = <_>::default();
     let mut guards = HashMap::<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], _) -> GuardResult>>::default();
     
@@ -321,7 +321,7 @@ fn main_impl()
         }
     ));
     
-    hooks.insert("init".to_string(),
+    effects.insert("init".to_string(),
         Rc::new(|global : &mut PrdGlobal, _tokens : &[Token], _i : usize, _children : &mut Vec<ASTNode>|
         {
             let mut data = MyData::default();
@@ -329,11 +329,11 @@ fn main_impl()
             data.variable_stack.push(<_>::default());
             data.enum_stack.push(<_>::default());
             global.udata.insert(data);
-            Ok(0)
+            Ok(())
         }
     ));
     
-    hooks.insert("scope_push".to_string(),
+    effects.insert("scope_push".to_string(),
         Rc::new(|global : &mut PrdGlobal, _tokens : &[Token], _i : usize, _children : &mut Vec<ASTNode>|
         {
             let mut data = global.udata.get_mut::<MyData>();
@@ -341,10 +341,10 @@ fn main_impl()
             data.typedef_stack.push(<_>::default());
             data.variable_stack.push(<_>::default());
             data.enum_stack.push(<_>::default());
-            Ok(0)
+            Ok(())
         }
     ));
-    hooks.insert("scope_pop".to_string(),
+    effects.insert("scope_pop".to_string(),
         Rc::new(|global : &mut PrdGlobal, _tokens : &[Token], _i : usize, _children : &mut Vec<ASTNode>|
         {
             let mut data = global.udata.get_mut::<MyData>();
@@ -352,12 +352,12 @@ fn main_impl()
             data.typedef_stack.pop();
             data.variable_stack.pop();
             data.enum_stack.pop();
-            Ok(0)
+            Ok(())
         }
     ));
     
     // FIXME: URGENT: log enums too!!!!
-    hooks.insert("typedefs_log".to_string(),
+    effects.insert("typedefs_log".to_string(),
         Rc::new(|global : &mut PrdGlobal, _tokens : &[Token], _i : usize, children : &mut Vec<ASTNode>|
         {
             let mut data = global.udata.get_mut::<MyData>();
@@ -406,10 +406,10 @@ fn main_impl()
                 visit_ast(c, f2);
             }
             //println_wrap!("-------");
-            Ok(0)
+            Ok(())
         }
     ));
-    hooks.insert("enums_log".to_string(),
+    effects.insert("enums_log".to_string(),
         Rc::new(|global : &mut PrdGlobal, _tokens : &[Token], _i : usize, children : &mut Vec<ASTNode>|
         {
             //println_wrap!("----");
@@ -435,14 +435,14 @@ fn main_impl()
                 visit_ast(c, f);
             }
             //println_wrap!("-------");
-            Ok(0)
+            Ok(())
         }
     ));
     
-    hooks.insert("fix_infix_precedence".to_string(),
+    effects.insert("fix_infix_precedence".to_string(),
         Rc::new(move |_global : &mut PrdGlobal, _tokens : &[Token], mut _i : usize, children : &mut Vec<ASTNode>|
         {
-            if children.len() <= 3 { return Ok(0); }
+            if children.len() <= 3 { return Ok(()); }
             let default_text = *_global.g.string_cache.get("infix_expression").unwrap();
             
             fn parse_expression_impl(default_text : u32, prec_map : &[u32], items : &mut Vec<ASTNode>, mut lhs : ASTNode, min_precedence : u32) -> ASTNode
@@ -479,11 +479,11 @@ fn main_impl()
             let mut new_node = parse_expression(default_text, &prec_map, children);
             std::mem::swap(children, &mut new_node.children.take().unwrap());
             
-            Ok(0)
+            Ok(())
         }
     ));
     
-    hooks.insert("entered_function".to_string(),
+    effects.insert("entered_function".to_string(),
         Rc::new(move |global : &mut PrdGlobal, _tokens : &[Token], mut _i : usize, children : &mut Vec<ASTNode>|
         {
             let mut data = global.udata.get_mut::<MyData>();
@@ -529,14 +529,15 @@ fn main_impl()
             }
             
             //println_wrap!("{:?}", data);
-            Ok(0)
+            Ok(())
         }
     ));
     
-    let hooks = Rc::new(hooks);
+    let effects = Rc::new(effects);
+    let hooks = Rc::new(<_>::default());
     let guards = Rc::new(guards);
     
-    let ast = parse(&g, "S", &tokens[..], guards, hooks);
+    let ast = parse(&g, "S", &tokens[..], guards, effects, hooks);
     //println_wrap!("{}", ast.is_ok());
     println_wrap!("Parse time taken: {:?} under {} items", start.elapsed(), tokens.len());
     

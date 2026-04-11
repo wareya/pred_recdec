@@ -29,15 +29,8 @@ mod tests {
         let tokens = tokenize(&mut g, &content).unwrap();
         println!("Tokenize time: {:?}", start2.elapsed());
         
-        let hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>
-            = <_>::default();
-        let guards = HashMap::<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], _) -> GuardResult>>::default();
-        
-        let hooks = Rc::new(hooks);
-        let guards = Rc::new(guards);
-        
         let start2 = std::time::Instant::now();
-        parse(&g, "json", &tokens[..], guards.clone(), hooks.clone()).unwrap();
+        parse(&g, "json", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()), Rc::new(<_>::default())).unwrap();
         println!("Parse time: {:?}", start2.elapsed());
         println!("Total time: {:?}", start.elapsed());
         
@@ -62,13 +55,6 @@ mod tests {
         use std::rc::Rc;
         type HashMap<K, V> = std::collections::HashMap::<K, V, crate::HashBuilder>;
 
-        let hooks : HashMap<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], usize, &mut Vec<ASTNode>) -> Result<usize, String>>>
-            = <_>::default();
-        let guards = HashMap::<String, Rc<dyn Fn(&mut PrdGlobal, &[Token], _) -> GuardResult>>::default();
-        
-        let hooks = Rc::new(hooks);
-        let guards = Rc::new(guards);
-        
         let mut n = 0;
         for entry in fs::read_dir("json_tests").unwrap()
         {
@@ -97,7 +83,8 @@ mod tests {
                         {
                             println!("(tokenized) {:?}", ts);
                         }
-                        parse(&g, "json", &tokens[..], guards.clone(), hooks.clone()).map_err(|e| e.err_message)
+                        parse(&g, "json", &tokens[..], Rc::new(<_>::default()), Rc::new(<_>::default()), Rc::new(<_>::default()))
+                            .map_err(|e| e.err_message)
                     };
                     
                     //println!("byte count {}", content.len());
